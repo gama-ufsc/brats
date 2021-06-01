@@ -97,3 +97,25 @@ def show_mri(image, overlay=None, pos=(0, 0, 0), plot_bounding_box=False,
         ortho_overlay.close()
 
     ortho_image.show()
+
+
+def dice(p: np.ndarray, l: np.ndarray):
+    """ Assume > 0 as foreground.
+    """
+    _p = (p > 0).astype(int)
+    _l = (l > 0).astype(int)
+
+    inter = (_p * _l).sum()
+    union = _p.sum() + _l.sum()
+
+    return 2 * inter / union
+
+def compute_foreground_dices(preds_fpaths, labels_fpaths):
+    f_dices = list()
+    for pred_fpath, label_fpath in zip(preds_fpaths, labels_fpaths):
+        pred = nib.load(pred_fpath).get_fdata()
+        label = nib.load(label_fpath).get_fdata()
+
+        f_dices.append(dice(pred, label))
+
+    return f_dices
