@@ -3,7 +3,6 @@ import torch.nn as nn
 from torch.nn import functional as F
 import math
 import numpy as np
-
 from skimage.transform import resize
 
 torch.manual_seed(0)
@@ -105,11 +104,6 @@ def softmax_helper(x):
     x_max = x.max(1, keepdim=True)[0].repeat(*rpt)
     e_x = torch.exp(x - x_max)
     return e_x / e_x.sum(1, keepdim=True).repeat(*rpt)
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from HD_BET.utils import softmax_helper
 
 
 class EncodingModule(nn.Module):
