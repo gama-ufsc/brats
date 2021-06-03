@@ -29,6 +29,28 @@ def copy_BraTS_segmentation_and_convert_labels(in_file, out_file):
     img_corr.CopyInformation(img)
     sitk.WriteImage(img_corr, out_file)
 
+def make_nnunet_tcga_dataset(dataset_dir, target_images_dir):
+    target_images_dir = Path(target_images_dir)
+    dataset_dir = Path(dataset_dir)
+
+    patient_names = dataset_dir.glob('*.nii.gz')
+    patient_names = {'_'.join(p.name.split('_')[:-1]) for p in patient_names}
+    for patient_name in tqdm(patient_names):
+        t1 = Path(dataset_dir, patient_name + "_t1.nii.gz")
+        flair = Path(dataset_dir, patient_name + "_flair.nii.gz")
+
+        assert all([
+            t1.exists(),
+            flair.exists(),
+        ]), "%s has no t1+flair" % patient_name
+
+        new_flair = Path(target_images_dir, patient_name + "_0000.nii.gz")
+        new_flair.symlink_to(flair)
+        new_t1 = Path(target_images_dir, patient_name + "_0001.nii.gz")
+        new_t1.symlink_to(t1)
+
+    return patient_names
+
 def make_nnunet_lemon_dataset(lemon_dir, target_images_dir):
     target_images_dir = Path(target_images_dir)
     lemon_dir = Path(lemon_dir)
