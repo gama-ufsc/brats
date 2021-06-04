@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -5,6 +6,8 @@ import math
 import numpy as np
 from skimage.transform import resize
 from HD_BET.utils import softmax_helper
+import nibabel as nib
+from pathlib import Path
 
 torch.manual_seed(0)
 
@@ -311,36 +314,114 @@ class Network(nn.Module):
         else:
             return seg_outputs[-1]
 
-def predict(x, x_or):
 
-    UNet =  Network(base_filters=24).to("cuda:0")
-    UNet.load_state_dict(torch.load("./hd_bet/unet_2d_hp_tests_with_data_augmentation.pth"))
-    UNet.to("cuda:0")
+class BETModel():
+    def __init__(self, weights_fpath, base_filters=24, device='cuda:0') -> None:
+        self.device = torch.device(device)
 
-    prediction = np.zeros(x.shape)
+        self.load_model(weights_fpath, base_filters)
 
-    x = torch.tensor(x)
+    def load_model(self, model_fpath, base_filters=24):
+        model = Network(base_filters=base_filters).to(self.device)
 
-    # UNet.eval()
+        model.load_state_dict(torch.load(model_fpath, map_location=self.device))
 
-    with torch.no_grad():
-        for i in range(x.shape[0]):
-            x_s = x[i]
-            x_s = x_s.to("cuda:0")
-            x_s = x_s.unsqueeze(dim=0).unsqueeze(dim=0).float()
-            pred = torch.sigmoid(UNet(x_s)[0]).cpu().detach().numpy()[0, 0]
-            pred[pred <= 0.5] = 0
-            pred[pred > 0.5] = 1
-            prediction[i] = pred
+        model.eval()
 
-    prediction = resize(prediction, (240, 240, 155))
+        self._model = model
 
-    prediction[prediction <= 0.5] = 0
-    prediction[prediction > 0.5] = 1
+    def prepare_image(self, image: nib.Nifti1Image) -> np.ndarray:
+        """Get T1 image ready for the model.
+        """
+        x = image.get_fdata().copy()
 
-    mask = prediction.astype(np.uint8)
+        # resize image
+        x = resize(x, (160, 160, 96))
 
-    brain = x_or*mask
+        # normalization
+        x = (x - x.mean())/(x.std() + 1e-6)
 
-    return brain, mask
-        
+        return x
+
+    def inference(self, image: np.ndarray, confidence=False) -> np.ndarray:
+        """Feed image to the model, returning the brain mask.
+        """
+        x = torch.tensor(image)
+
+        pred = np.zeros(image.shape)
+        with torch.no_grad():
+            # iterate over the slices, one prediction for each
+            for i in range(x.shape[0]):
+                x_s = x[i]
+                x_s = x_s.to(self.device).float()
+
+                y_pred = torch.sigmoid(self._model(
+                    x_s.unsqueeze(dim=0).unsqueeze(dim=0).float()
+                )[0])
+                pred[i] = y_pred[0, 0].cpu().detach().numpy()
+
+        pred = resize(pred, (240, 240, 155))
+
+        if not confidence:
+            # sigmoid mask to binary
+            pred = (pred > 0.5).astype(int)
+
+        return pred
+
+    def prepare_pred(self, pred: np.ndarray, og_image: nib.Nifti1Image) -> nib.Nifti1Image:
+        """Get mask prediction into NIfTI format and apply mask to `og_image`.
+        """
+        pred_image = nib.Nifti1Image(pred, affine=og_image.affine,
+                                     header=og_image.header)
+
+        brain = og_image.get_fdata().copy()
+        brain *= pred
+
+        brain_image = nib.Nifti1Image(brain, affine=og_image.affine,
+                                header=og_image.header)
+
+        return brain_image, pred_image
+
+    def __call__(self, image: nib.Nifti1Image) -> nib.Nifti1Image:
+        """Run standard use of the model.
+        """
+        x = self.prepare_image(image)
+
+        pred = self.inference(x)
+
+        brain_image, pred_image = self.prepare_pred(pred, image)
+
+        return brain_image, pred_image
+
+def bet(in_file_fpath, out_prefix, weights_fpath=None, device=None):
+    if weights_fpath is None:
+        weights_fpath = os.environ['BET_MODEL_WEIGHTS']
+
+    in_file_fpath = Path(in_file_fpath)
+    out_prefix = Path(out_prefix)
+
+    # manage device
+    if isinstance(device, str):
+        device = device.lower()
+    
+    if device == 'gpu':
+        device = 'cuda:0'
+    elif isinstance(device, int):
+        device = f'cuda:{device}'
+    else:
+        assert device == 'cpu' or device.startswith('cuda:'), \
+            "unexpected `{device}` device"
+
+    # instantiate model
+    bet_model = BETModel(weights_fpath, device=device)
+
+    input_image = nib.load(in_file_fpath)
+    brain_image, mask_image = bet_model(input_image)
+
+    brain_fpath = out_prefix.parent/(out_prefix.name + in_file_fpath.name)
+    nib.save(brain_image, brain_fpath)
+
+    mask_fpath = brain_fpath.parent/brain_fpath.name.replace('.nii', '_mask.nii')
+    nib.save(mask_image, mask_fpath)
+
+    return brain_fpath, mask_fpath
