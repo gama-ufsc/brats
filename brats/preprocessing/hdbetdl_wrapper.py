@@ -3,7 +3,7 @@ import subprocess
 
 from pathlib import Path
 
-from hd_bet.model import predict
+from .hd_bet.model import predict
 import nibabel as nib
 
 import numpy as np
