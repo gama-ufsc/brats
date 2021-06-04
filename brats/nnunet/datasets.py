@@ -29,7 +29,7 @@ def copy_BraTS_segmentation_and_convert_labels(in_file, out_file):
     img_corr.CopyInformation(img)
     sitk.WriteImage(img_corr, out_file)
 
-def make_nnunet_tcga_dataset(dataset_dir, target_images_dir):
+def make_nnunet_tcga_dataset(dataset_dir, target_images_dir, overwrite):
     target_images_dir = Path(target_images_dir)
     dataset_dir = Path(dataset_dir)
 
@@ -45,9 +45,20 @@ def make_nnunet_tcga_dataset(dataset_dir, target_images_dir):
         ]), "%s has no t1+flair" % patient_name
 
         new_flair = Path(target_images_dir, patient_name + "_0000.nii.gz")
-        new_flair.symlink_to(flair)
+        try:
+            new_flair.symlink_to(flair)
+        except FileExistsError:
+            if overwrite:
+                new_flair.unlink()
+                new_flair.symlink_to(flair)
+
         new_t1 = Path(target_images_dir, patient_name + "_0001.nii.gz")
-        new_t1.symlink_to(t1)
+        try:
+            new_t1.symlink_to(t1)
+        except FileExistsError:
+            if overwrite:
+                new_t1.unlink()
+                new_t1.symlink_to(t1)
 
     return patient_names
 
