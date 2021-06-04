@@ -6,7 +6,10 @@ from typing import Tuple
 import nibabel as nib
 
 from .hdbet_wrapper import hd_bet
+<<<<<<< HEAD
 from .brainmage_wrapper import brainmage
+=======
+>>>>>>> model not running properly in eval mode
 from .nipype_wrappers import ants_registration, ants_transformation, fsl_bet, fsl_applymask
 
 
@@ -256,6 +259,7 @@ class PreprocessorHDBET(Preprocessor):
 
         return brain_fpath, brain_mask_fpath
 
+<<<<<<< HEAD
 class PreprocessorBrainMaGe(Preprocessor):
     """Preprocessing module of BraTS pipeline using BrainMaGe.
 
@@ -266,6 +270,30 @@ class PreprocessorBrainMaGe(Preprocessor):
                  bet_first=False, num_threads=-1, device='gpu'):
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
                          bet_first=bet_first, num_threads=num_threads)
+=======
+class PreprocessorBET(Preprocessor):
+    """Preprocessing module of BraTS pipeline.
+
+    Aligns the FLAIR and T1 modalities to a T1 template. Also performs brain
+    extraction.
+
+    This version performs registration and transformation first (FLAIR to T1 to
+    template) and brain extraction last. Registration and transformation are
+    using ANTS; brain extraction uses our BET model based on HD-BET.
+    """
+    def __init__(self, template_fpath: str, tmpdir: str, num_threads=-1):
+        super().__init__(template_fpath, tmpdir, fast_bet=False,
+                         preprocess_t1=True, num_threads=num_threads)
+
+    def run(self, flair_fpath: str, t1_fpath: str) -> nib.Nifti1Image:
+        """Run preprocessing pipeline.
+
+        Args:
+            flair_fpath: path to nifti image containing the FLAIR modality of
+            the subject. Main object of the preprocessing operations.
+            t1_fpath: Path to nifti image containing the T1 modality of the
+            subject. Used to align the subject to the template.
+>>>>>>> model not running properly in eval mode
 
         self.device = device
 
@@ -274,6 +302,7 @@ class PreprocessorBrainMaGe(Preprocessor):
             self.tmpdir,
             'mask_' + os.path.basename(modality_fpath)
         )
+<<<<<<< HEAD
         brain_mask_fpath = brainmage(modality_fpath, brain_mask_fpath,
                                      device=self.device)
 
@@ -281,6 +310,23 @@ class PreprocessorBrainMaGe(Preprocessor):
             modality_fpath,
             brain_mask_fpath,
             os.path.join(self.tmpdir, 'brain_')
+=======
+        # apply transformations to t1
+        t1_at_template_fpath = ants_transformation(
+            t1_fpath,
+            self.template_fpath,
+            transforms,
+            os.path.join(self.tmpdir, 't1_template_'),
+            self.num_threads
+        )
+
+        t1_brain_fpath, flair_brain_fpath, brain_mask_fpath = hd_bet_dl(
+            t1_at_template_fpath,
+            flair_at_template_fpath,
+            os.path.join(self.tmpdir,
+                         os.path.basename(t1_fpath).replace('.nii.gz', '')),
+            **self.hdbet_kwargs
+>>>>>>> model not running properly in eval mode
         )
 
         return brain_fpath, brain_mask_fpath

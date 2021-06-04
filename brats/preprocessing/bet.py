@@ -326,8 +326,6 @@ class BETModel():
 
         model.load_state_dict(torch.load(model_fpath, map_location=self.device))
 
-        model.eval()
-
         self._model = model
 
     def prepare_image(self, image: nib.Nifti1Image) -> np.ndarray:
