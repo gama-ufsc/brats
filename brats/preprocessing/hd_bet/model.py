@@ -314,7 +314,7 @@ class Network(nn.Module):
         else:
             return seg_outputs[-1]
 
-def predict(x):
+def predict(x, x_or):
 
     UNet =  Network(base_filters=24).to("cuda:0")
     UNet.load_state_dict(torch.load("./hd_bet/unet_2d_hp_tests_with_data_augmentation.pth"))
@@ -324,24 +324,26 @@ def predict(x):
 
     x = torch.tensor(x)
 
-    for i in range(x.shape[0]):
-        x_s = x[i]
-        x_s = x_s.to("cuda:0")
-        x_s = x_s.unsqueeze(dim=0).unsqueeze(dim=0).float()
-        pred = torch.sigmoid(UNet(x_s)[0]).cpu().detach().numpy()[0, 0]
-        pred[pred < 0.5] = 0
-        pred[pred >= 0.5] = 1
-        prediction[i] = pred
+    # UNet.eval()
 
-    brain = prediction*x.numpy()
+    with torch.no_grad():
+        for i in range(x.shape[0]):
+            x_s = x[i]
+            x_s = x_s.to("cuda:0")
+            x_s = x_s.unsqueeze(dim=0).unsqueeze(dim=0).float()
+            pred = torch.sigmoid(UNet(x_s)[0]).cpu().detach().numpy()[0, 0]
+            pred[pred <= 0.5] = 0
+            pred[pred > 0.5] = 1
+            prediction[i] = pred
 
-    brain = resize(brain, (240, 240, 155))
     prediction = resize(prediction, (240, 240, 155))
-    
-    prediction[prediction < 0.5] = 0
-    prediction[prediction >= 0.5] = 1
 
-    mask = prediction
+    prediction[prediction <= 0.5] = 0
+    prediction[prediction > 0.5] = 1
+
+    mask = prediction.astype(np.uint8)
+
+    brain = x_or*mask
 
     return brain, mask
         
