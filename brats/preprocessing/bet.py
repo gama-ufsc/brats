@@ -4,7 +4,6 @@ from torch.nn import functional as F
 import math
 import numpy as np
 from skimage.transform import resize
-from HD_BET.utils import softmax_helper
 
 torch.manual_seed(0)
 
@@ -101,6 +100,14 @@ class UNet2D(nn.Module):
         decoder_5 = self.Decoder_5(torch.cat([encoder_1, decoder_4], dim=1))
         output_1 = self.Output_1(decoder_5)
         return output_1, output_2, output_3
+
+    
+def softmax_helper(x):
+    rpt = [1 for _ in range(len(x.size()))]
+    rpt[1] = x.size(1)
+    x_max = x.max(1, keepdim=True)[0].repeat(*rpt)
+    e_x = torch.exp(x - x_max)
+    return e_x / e_x.sum(1, keepdim=True).repeat(*rpt)
 
 
 class EncodingModule(nn.Module):
