@@ -334,7 +334,7 @@ class BETModel():
         x = image.get_fdata().copy()
 
         # resize image
-        x = resize(x, (160, 160, 96))
+        x = resize(x, (160, 160, 96), anti_aliasing=True)
 
         # normalization
         x = (x - x.mean())/(x.std() + 1e-6)
