@@ -17,7 +17,7 @@ class Preprocessor():
     using ANTS; brain extraction uses FSL's BET.
     """
     def __init__(self, template_fpath: str, tmpdir: str, fast_bet: bool = True,
-                 preprocess_t1=True, num_threads=-1):
+                 preprocess_t1=True, bet_flair=True, num_threads=-1):
         assert os.path.exists(template_fpath), (
             '`template` must be a valid path to the template image'
         )
@@ -28,6 +28,8 @@ class Preprocessor():
         self.num_threads = num_threads
 
         self.preprocess_t1 = preprocess_t1
+
+        self.bet_flair = bet_flair
 
         # create directory for temporary files
         os.makedirs(tmpdir, exist_ok=True)
@@ -79,15 +81,39 @@ class Preprocessor():
             self.num_threads
         )
 
-        # extract brain from flair
-        flair_brain_fpath = fsl_bet(flair_at_template_fpath,
-                                    os.path.join(self.tmpdir, 'flair_brain_'),
-                                    fast=self.fast_bet)
+        if self.bet_flair:
+            # extract brain from flair
+            flair_brain_fpath, brain_mask_fpath = fsl_bet(
+                flair_at_template_fpath,
+                os.path.join(self.tmpdir, 'flair_brain_'),
+                fast=self.fast_bet
+            )
 
-        # load image
-        flair_image = nib.load(flair_brain_fpath)
+            # load image
+            flair_image = nib.load(flair_brain_fpath)
 
-        if self.preprocess_t1:
+            if self.preprocess_t1:
+                # apply transformations to t1
+                t1_at_template_fpath = ants_transformation(
+                    t1_fpath,
+                    self.template_fpath,
+                    transforms,
+                    os.path.join(self.tmpdir, 't1_template_'),
+                    self.num_threads
+                )
+
+                # extract brain from t1
+                t1_brain_fpath = fsl_applymask(
+                    t1_at_template_fpath,
+                    brain_mask_fpath,
+                    os.path.join(self.tmpdir, 'brain_')
+                )
+
+                # load image
+                t1_image = nib.load(t1_brain_fpath)
+
+                return flair_image, t1_image, reverse_transforms[::-1]
+        else:
             # apply transformations to t1
             t1_at_template_fpath = ants_transformation(
                 t1_fpath,
@@ -98,16 +124,29 @@ class Preprocessor():
             )
 
             # extract brain from t1
-            t1_brain_fpath = fsl_bet(t1_at_template_fpath,
-                                    os.path.join(self.tmpdir, 't1_brain_'),
-                                    fast=self.fast_bet)
+            t1_brain_fpath, brain_mask_fpath = fsl_bet(
+                t1_at_template_fpath,
+                os.path.join(self.tmpdir, 't1_brain_'),
+                fast=self.fast_bet
+            )
+
+            # extract brain from flair
+            flair_brain_fpath = fsl_applymask(
+                flair_at_template_fpath,
+                brain_mask_fpath,
+                os.path.join(self.tmpdir, 'brain_')
+            )
 
             # load image
-            t1_image = nib.load(t1_brain_fpath)
+            flair_image = nib.load(flair_brain_fpath)
 
-            return flair_image, t1_image, reverse_transforms[::-1]
-        else:
-            return flair_image, reverse_transforms[::-1]
+            if self.preprocess_t1:
+                # load image
+                t1_image = nib.load(t1_brain_fpath)
+
+                return flair_image, t1_image, reverse_transforms[::-1]
+            else:
+                return flair_image, reverse_transforms[::-1]
 
     def transform_prediction(
         self,
