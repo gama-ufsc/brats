@@ -78,6 +78,8 @@ def fsl_bet(in_file_fpath, out_prefix: str, fast=False) -> str:
 
     bet.inputs.frac = 0.50
 
+    bet.inputs.mask = True
+
     if not fast:
         bet.inputs.reduce_bias = True
 
@@ -99,13 +101,18 @@ def fsl_bet(in_file_fpath, out_prefix: str, fast=False) -> str:
 
     res = bet.run()
 
-    return res.outputs.out_file
+    return res.outputs.out_file, res.outputs.mask_file
 
 
 def fsl_applymask(in_file_fpath, mask_file_fpath, out_prefix):
     apply = fsl.ApplyMask()
     apply.inputs.in_file = str(in_file_fpath)
     apply.inputs.mask_file = str(mask_file_fpath)
+
+    if str(in_file_fpath).endswith('.nii'):
+        apply.inputs.output_type = 'NIFTI'
+    elif str(in_file_fpath).endswith('.nii.gz'):
+        apply.inputs.output_type = 'NIFTI_GZ'
 
     apply.inputs.out_file = out_prefix + os.path.basename(in_file_fpath)
 
