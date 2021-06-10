@@ -339,6 +339,7 @@ class BETModel():
         # reshaping
         x = x.transpose((0, 2, 1))
         x = np.flip(x, axis=1)
+        x = np.flip(x, axis=2)
 
         return x.copy()
 
@@ -374,6 +375,7 @@ class BETModel():
         """Get mask prediction into NIfTI format and apply mask to `og_image`.
         """
         # undo reshaping
+        pred = np.flip(pred, axis=2)
         pred = np.flip(pred, axis=1)
         pred = pred.transpose((0, 2, 1))
 
