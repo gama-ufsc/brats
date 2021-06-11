@@ -36,13 +36,17 @@ def make_nnunet_tcga_dataset(dataset_dir, target_images_dir, overwrite):
     patient_names = dataset_dir.glob('*.nii.gz')
     patient_names = {'_'.join(p.name.split('_')[:-1]) for p in patient_names}
     for patient_name in tqdm(patient_names):
-        t1 = Path(dataset_dir, patient_name + "_t1.nii.gz")
         flair = Path(dataset_dir, patient_name + "_flair.nii.gz")
+        t1 = Path(dataset_dir, patient_name + "_t1.nii.gz")
+        t1c = Path(dataset_dir, patient_name + "_t1ce.nii.gz")
+        t2 = Path(dataset_dir, patient_name + "_t2.nii.gz")
 
         assert all([
-            t1.exists(),
             flair.exists(),
-        ]), "%s has no t1+flair" % patient_name
+            t1.exists(),
+            t1c.exists(),
+            t2.exists(),
+        ]), "%s doesn't have all modalities" % patient_name
 
         new_flair = Path(target_images_dir, patient_name + "_0000.nii.gz")
         try:
@@ -53,12 +57,20 @@ def make_nnunet_tcga_dataset(dataset_dir, target_images_dir, overwrite):
                 new_flair.symlink_to(flair)
 
         new_t1 = Path(target_images_dir, patient_name + "_0001.nii.gz")
+<<<<<<< Updated upstream
         try:
             new_t1.symlink_to(t1)
         except FileExistsError:
             if overwrite:
                 new_t1.unlink()
                 new_t1.symlink_to(t1)
+=======
+        new_t1.symlink_to(t1)
+        new_t1c = Path(target_images_dir, patient_name + "_0002.nii.gz")
+        new_t1c.symlink_to(t1c)
+        new_t2 = Path(target_images_dir, patient_name + "_0003.nii.gz")
+        new_t2.symlink_to(t2)
+>>>>>>> Stashed changes
 
     return patient_names
 
