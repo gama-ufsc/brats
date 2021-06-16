@@ -191,10 +191,11 @@ class PreprocessorHDBET(Preprocessor):
     using ANTS; brain extraction uses FSL's BET.
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_all=True,
-                 num_threads=-1, **hdbet_kwargs):
+                 bet_first=False, num_threads=-1, **hdbet_kwargs):
         super().__init__(template_fpath, tmpdir, fast_bet=False,
                          preprocess_t1=True, num_threads=num_threads)
         self.bet_all = bet_all
+        self.bet_first = bet_first
         self.hdbet_kwargs = hdbet_kwargs
 
     def run(self, flair_fpath: str, t1_fpath: str) -> nib.Nifti1Image:
@@ -252,20 +253,68 @@ class PreprocessorHDBET(Preprocessor):
             self.num_threads
         )
 
-        t1_brain_fpath, brain_mask_fpath = hd_bet(
-            t1_at_template_fpath,
-            os.path.join(self.tmpdir,
-                            os.path.basename(t1_fpath).replace('.nii.gz', '')),
-            **self.hdbet_kwargs
-        )
-
-        if self.bet_all:
-            flair_brain_fpath, _ = hd_bet(
-                flair_at_template_fpath,
+        if not self.bet_first:
+            t1_brain_fpath, brain_mask_fpath = hd_bet(
+                t1_at_template_fpath,
                 os.path.join(self.tmpdir,
-                             os.path.basename(flair_fpath).replace('.nii.gz', '')),
+                             os.path.basename(t1_fpath).replace('.nii', '').replace('.gz', '')),
                 **self.hdbet_kwargs
             )
+        else:
+            _, raw_t1_mask_fpath = hd_bet(
+                t1_fpath,
+                os.path.join(self.tmpdir,
+                             os.path.basename(t1_fpath).replace('.nii', '').replace('.gz', '')),
+                **self.hdbet_kwargs
+            )
+
+            # transform mask to template space
+            brain_mask_fpath = ants_transformation(
+                raw_t1_mask_fpath,
+                self.template_fpath,
+                transforms,
+                os.path.join(self.tmpdir, 'mask_template_'),
+                self.num_threads
+            )
+
+            # apply mask to t1 at template
+            t1_brain_fpath = fsl_applymask(
+                t1_at_template_fpath,
+                brain_mask_fpath,
+                os.path.join(self.tmpdir, 'brain_')
+            )
+
+        if self.bet_all:
+            if not self.bet_first:
+                flair_brain_fpath, _ = hd_bet(
+                    flair_at_template_fpath,
+                    os.path.join(self.tmpdir,
+                                os.path.basename(flair_fpath).replace('.nii', '').replace('.gz', '')),
+                    **self.hdbet_kwargs
+                )
+            else:
+                _, raw_flair_mask_fpath = hd_bet(
+                    flair_fpath,
+                    os.path.join(self.tmpdir,
+                                os.path.basename(flair_fpath).replace('.nii', '').replace('.gz', '')),
+                    **self.hdbet_kwargs
+                )
+
+                # transform mask to template space
+                brain_mask_fpath = ants_transformation(
+                    raw_flair_mask_fpath,
+                    self.template_fpath,
+                    transforms,
+                    os.path.join(self.tmpdir, 'mask_template_'),
+                    self.num_threads
+                )
+
+                # apply mask to flair at template
+                flair_brain_fpath = fsl_applymask(
+                    flair_at_template_fpath,
+                    brain_mask_fpath,
+                    os.path.join(self.tmpdir, 'brain_')
+                )
         else:
             flair_brain_fpath = fsl_applymask(
                 flair_at_template_fpath,
