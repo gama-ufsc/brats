@@ -3,6 +3,7 @@ import os
 import nibabel as nib
 
 from .hdbet_wrapper import hd_bet
+from .brainmage_wrapper import brainmage
 from .nipype_wrappers import ants_registration, ants_transformation, fsl_bet, fsl_applymask
 
 
@@ -321,6 +322,101 @@ class PreprocessorHDBET(Preprocessor):
                 brain_mask_fpath,
                 os.path.join(self.tmpdir, 'brain_')
             )
+
+        flair_image = nib.load(flair_brain_fpath)
+        t1_image = nib.load(t1_brain_fpath)
+
+        return flair_image, t1_image, reverse_transforms[::-1]
+
+class PreprocessorBrainMaGe(Preprocessor):
+    """Preprocessing module of BraTS pipeline.
+
+    Aligns the FLAIR and T1 modalities to a T1 template. Also performs brain
+    extraction.
+
+    This version performs registration and transformation first (FLAIR to T1 to
+    template) and brain extraction last. Registration and transformation are
+    using ANTS; brain extraction uses BrainMaGe.
+    """
+    def __init__(self, template_fpath: str, tmpdir: str, device='gpu',
+                 num_threads=-1):
+        super().__init__(template_fpath, tmpdir, fast_bet=False,
+                         preprocess_t1=True, num_threads=num_threads)
+        self.device = device
+
+    def run(self, flair_fpath: str, t1_fpath: str) -> nib.Nifti1Image:
+        """Run preprocessing pipeline.
+
+        Args:
+            flair_fpath: path to nifti image containing the FLAIR modality of
+            the subject. Main object of the preprocessing operations.
+            t1_fpath: Path to nifti image containing the T1 modality of the
+            subject. Used to align the subject to the template.
+
+        Returns:
+            flair_image: Preprocessed and loaded `flair_image`.
+            t1_image: Preprocessed and loaded `t1_image`.
+            reverse_transform: Path to matrices that reverse the raw to
+            preprocessed transformation.
+        """
+        transforms = list()
+        reverse_transforms = list()
+
+        # flair to t1 (within-subject) registration
+        wsr_transform_fpath, wsr_reverse_transform_fpath = ants_registration(
+            t1_fpath,
+            flair_fpath,
+            os.path.join(self.tmpdir, 'wsr_transform_'),
+            self.num_threads,
+        )
+        transforms.insert(0, wsr_transform_fpath)
+        reverse_transforms.append(wsr_reverse_transform_fpath)
+
+        # t1 (subject) to template registration
+        str_transform_fpath, str_reverse_transform_fpath = ants_registration(
+            self.template_fpath,
+            t1_fpath,
+            os.path.join(self.tmpdir, 'str_transform_'),
+            self.num_threads,
+        )
+        transforms.insert(0, str_transform_fpath)
+        reverse_transforms.append(str_reverse_transform_fpath)
+
+        # apply transformations to flair
+        flair_at_template_fpath = ants_transformation(
+            flair_fpath,
+            self.template_fpath,
+            transforms,
+            os.path.join(self.tmpdir, 'flair_template_'),
+            self.num_threads
+        )
+        # apply transformations to t1
+        t1_at_template_fpath = ants_transformation(
+            t1_fpath,
+            self.template_fpath,
+            transforms,
+            os.path.join(self.tmpdir, 't1_template_'),
+            self.num_threads
+        )
+
+        brain_mask_fpath = os.path.join(
+            self.tmpdir,
+            'mask_' + os.path.basename(t1_at_template_fpath)
+        )
+        brain_mask_fpath = brainmage(t1_at_template_fpath, brain_mask_fpath,
+                                     device=self.device)
+
+        t1_brain_fpath = fsl_applymask(
+            t1_at_template_fpath,
+            brain_mask_fpath,
+            os.path.join(self.tmpdir, 'brain_')
+        )
+
+        flair_brain_fpath = fsl_applymask(
+            flair_at_template_fpath,
+            brain_mask_fpath,
+            os.path.join(self.tmpdir, 'brain_')
+        )
 
         flair_image = nib.load(flair_brain_fpath)
         t1_image = nib.load(t1_brain_fpath)

@@ -1,1 +1,1 @@
-from .preprocessing import Preprocessor, PreprocessorHDBET
+from .preprocessing import Preprocessor, PreprocessorHDBET, PreprocessorBrainMaGe
