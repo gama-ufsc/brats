@@ -214,7 +214,7 @@ class PreprocessorFSL(Preprocessor):
     extraction.
     """
     def __init__(self, template_fpath: str, tmpdir: str, fast_bet=True,
-                 bet_modality='FLAIR', bet_first=False, num_threads=-1):
+                 bet_modality='T1', bet_first=False, num_threads=-1):
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
                          bet_first=bet_first, num_threads=num_threads)
 
