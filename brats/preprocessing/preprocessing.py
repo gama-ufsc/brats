@@ -249,7 +249,8 @@ class PreprocessorHDBET(Preprocessor):
             os.path.join(
                 self.tmpdir,
                 os.path.basename(modality_fpath).replace('.nii', '') \
-                                                .replace('.gz', '')),
+                                                .replace('.gz', '')) \
+                                                + '_mask',
             **self.hdbet_kwargs
         )
 
