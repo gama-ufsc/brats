@@ -6,7 +6,7 @@ from pathlib import Path
 
 import nibabel as nib
 
-from .bet import bet
+from .bet import bet as our_bet
 from .hdbet_wrapper import hd_bet
 from .brainmage_wrapper import brainmage
 from .nipype_wrappers import ants_registration, ants_transformation, fsl_bet, fsl_applymask
@@ -283,6 +283,32 @@ class PreprocessorBrainMaGe(Preprocessor):
             modality_fpath,
             brain_mask_fpath,
             os.path.join(self.tmpdir, 'brain_')
+        )
+
+        return brain_fpath, brain_mask_fpath
+
+class PreprocessorOurBET(Preprocessor):
+    """Preprocessing module of BraTS pipeline using BrainMaGe.
+
+    Aligns the FLAIR and T1 modalities to a T1 template. Also performs brain
+    extraction.
+    """
+    def __init__(self, template_fpath: str, weights_fpath: str, tmpdir: str,
+                 bet_modality='FLAIR', bet_first=False, num_threads=-1,
+                 device='gpu'):
+        super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
+                         bet_first=bet_first, num_threads=num_threads)
+
+        self.weights_fpath = weights_fpath
+
+        self.device = device
+
+    def _bet(self, modality_fpath):
+        brain_fpath, brain_mask_fpath = our_bet(
+            modality_fpath,
+            os.path.join(self.tmpdir, 'brain_'),
+            self.weights_fpath,
+            self.device
         )
 
         return brain_fpath, brain_mask_fpath
