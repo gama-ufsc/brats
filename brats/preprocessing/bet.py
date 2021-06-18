@@ -337,9 +337,7 @@ class BETModel():
         x = (x - x.mean())/(x.std() + 1e-6)
 
         # reshaping
-        x = x.transpose((0, 2, 1))
-        x = np.flip(x, axis=1)
-        x = np.flip(x, axis=2)
+        x = x.transpose((2, 0, 1))
 
         return x.copy()
 
@@ -347,7 +345,7 @@ class BETModel():
         """Feed image to the model, returning the brain mask.
         """
         # resize image
-        _image = resize(image, (160, 96, 160), anti_aliasing=True)
+        _image = image.copy()
 
         x = torch.tensor(_image)
 
@@ -363,8 +361,6 @@ class BETModel():
                 )[0])
                 pred[i] = y_pred[0, 0].cpu().detach().numpy()
 
-        pred = resize(pred, image.shape)
-
         if not confidence:
             # sigmoid mask to binary
             pred = (pred > 0.5).astype(int)
@@ -375,9 +371,7 @@ class BETModel():
         """Get mask prediction into NIfTI format and apply mask to `og_image`.
         """
         # undo reshaping
-        pred = np.flip(pred, axis=2)
-        pred = np.flip(pred, axis=1)
-        pred = pred.transpose((0, 2, 1))
+        pred = pred.transpose((1, 2, 0))
 
         pred_image = nib.Nifti1Image(pred, affine=og_image.affine,
                                      header=og_image.header)
