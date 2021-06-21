@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from time import time
 import os
 
 from typing import Tuple
@@ -30,6 +31,10 @@ class Preprocessor(ABC):
         self.bet_modality = bet_modality.lower()
 
         self.bet_first = bet_first
+
+
+        # tracks how long the bets took
+        self.bet_cost_hist = list()
 
         # create directory for temporary files
         os.makedirs(tmpdir, exist_ok=True)
@@ -79,6 +84,8 @@ class Preprocessor(ABC):
     @abstractmethod
     def _bet(self, modality_fpath) -> Tuple[str, str]:
         """ BETs `modality_fpath`, returning brain image and mask.
+
+        UPDATE `self.bet_cost_hist`!
         """
 
     def bet_transform_apply(self, src_fpath, dst_fpath, transforms):
@@ -223,12 +230,16 @@ class PreprocessorFSL(Preprocessor):
         self.fast_bet = fast_bet
 
     def _bet(self, modality_fpath):
+        s_time = time()
         # extract brain
         brain_fpath, brain_mask_fpath = fsl_bet(
             modality_fpath,
             os.path.join(self.tmpdir, 'brain_'),
             fast=self.fast_bet
         )
+        f_time = time()
+
+        self.bet_cost_hist.append(f_time - s_time)
 
         return brain_fpath, brain_mask_fpath
 
@@ -246,6 +257,7 @@ class PreprocessorHDBET(Preprocessor):
         self.hdbet_kwargs = hdbet_kwargs
 
     def _bet(self, modality_fpath):
+        s_time = time()
         brain_fpath, brain_mask_fpath = hd_bet(
             modality_fpath,
             os.path.join(
@@ -255,6 +267,9 @@ class PreprocessorHDBET(Preprocessor):
                                                 + '_mask',
             **self.hdbet_kwargs
         )
+        f_time = time()
+
+        self.bet_cost_hist.append(f_time - s_time)
 
         return brain_fpath, brain_mask_fpath
 
@@ -276,8 +291,12 @@ class PreprocessorBrainMaGe(Preprocessor):
             self.tmpdir,
             'mask_' + os.path.basename(modality_fpath)
         )
+        s_time = time()
         brain_mask_fpath = brainmage(modality_fpath, brain_mask_fpath,
                                      device=self.device)
+        f_time = time()
+
+        self.bet_cost_hist.append(f_time - s_time)
 
         brain_fpath = fsl_applymask(
             modality_fpath,
@@ -304,11 +323,15 @@ class PreprocessorOurBET(Preprocessor):
         self.device = device
 
     def _bet(self, modality_fpath):
+        s_time = time()
         brain_fpath, brain_mask_fpath = our_bet(
             modality_fpath,
             os.path.join(self.tmpdir, 'brain_'),
             self.weights_fpath,
             self.device
         )
+        f_time = time()
+
+        self.bet_cost_hist.append(f_time - s_time)
 
         return brain_fpath, brain_mask_fpath
