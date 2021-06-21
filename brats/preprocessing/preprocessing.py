@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from logging import warn
 from time import time
 import os
 
@@ -20,7 +21,7 @@ class Preprocessor(ABC):
     Also performs brain extraction (BET defined by child).
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_modality='FLAIR',
-                 bet_first=False, num_threads=-1):
+                 bet_first=False, num_threads=-1, device='gpu'):
         assert os.path.exists(template_fpath), (
             '`template` must be a valid path to the template image'
         )
@@ -32,6 +33,8 @@ class Preprocessor(ABC):
 
         self.bet_first = bet_first
 
+        assert device.lower() in ['cpu', 'gpu'], 'Device not recognized'
+        self.device = device.lower()
 
         # tracks how long the bets took
         self.bet_cost_hist = list()
@@ -216,6 +219,7 @@ class Preprocessor(ABC):
 
         return nib.load(transformed_pred_image)
 
+
 class PreprocessorFSL(Preprocessor):
     """Preprocessing module of BraTS pipeline using FSL's BET.
 
@@ -223,9 +227,13 @@ class PreprocessorFSL(Preprocessor):
     extraction.
     """
     def __init__(self, template_fpath: str, tmpdir: str, fast_bet=True,
-                 bet_modality='T1', bet_first=False, num_threads=-1):
+                 bet_modality='T1', bet_first=False, num_threads=-1,
+                 device='cpu'):
+        assert device.lower() == 'cpu', 'only cpu supported by FSL BET'
+
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
-                         bet_first=bet_first, num_threads=num_threads)
+                         bet_first=bet_first, num_threads=num_threads,
+                         device=device)
 
         self.fast_bet = fast_bet
 
@@ -243,6 +251,7 @@ class PreprocessorFSL(Preprocessor):
 
         return brain_fpath, brain_mask_fpath
 
+
 class PreprocessorHDBET(Preprocessor):
     """Preprocessing module of BraTS pipeline using HD-BET.
 
@@ -250,9 +259,13 @@ class PreprocessorHDBET(Preprocessor):
     extraction.
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_modality='FLAIR',
-                 bet_first=False, num_threads=-1, **hdbet_kwargs):
+                 bet_first=False, num_threads=-1, device='gpu', **hdbet_kwargs):
+        if device.lower() == 'cpu':
+            warn('HD-BET on CPU not implemented, switching to GPU')
+
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
-                         bet_first=bet_first, num_threads=num_threads)
+                         bet_first=bet_first, num_threads=num_threads,
+                         device='gpu')
 
         self.hdbet_kwargs = hdbet_kwargs
 
@@ -273,19 +286,13 @@ class PreprocessorHDBET(Preprocessor):
 
         return brain_fpath, brain_mask_fpath
 
+
 class PreprocessorBrainMaGe(Preprocessor):
     """Preprocessing module of BraTS pipeline using BrainMaGe.
 
     Aligns the FLAIR and T1 modalities to a T1 template. Also performs brain
     extraction.
     """
-    def __init__(self, template_fpath: str, tmpdir: str, bet_modality='FLAIR',
-                 bet_first=False, num_threads=-1, device='gpu'):
-        super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
-                         bet_first=bet_first, num_threads=num_threads)
-
-        self.device = device
-
     def _bet(self, modality_fpath):
         brain_mask_fpath = os.path.join(
             self.tmpdir,
@@ -306,6 +313,7 @@ class PreprocessorBrainMaGe(Preprocessor):
 
         return brain_fpath, brain_mask_fpath
 
+
 class PreprocessorOurBET(Preprocessor):
     """Preprocessing module of BraTS pipeline using BrainMaGe.
 
@@ -316,11 +324,10 @@ class PreprocessorOurBET(Preprocessor):
                  bet_modality='FLAIR', bet_first=False, num_threads=-1,
                  device='gpu'):
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
-                         bet_first=bet_first, num_threads=num_threads)
+                         bet_first=bet_first, num_threads=num_threads,
+                         device=device)
 
         self.weights_fpath = weights_fpath
-
-        self.device = device
 
     def _bet(self, modality_fpath):
         s_time = time()
