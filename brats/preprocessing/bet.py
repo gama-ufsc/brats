@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import math
 import numpy as np
-from skimage.transform import resize
+from skimage.measure import label
 from HD_BET.utils import softmax_helper
 import nibabel as nib
 from pathlib import Path
@@ -316,8 +316,10 @@ class Network(nn.Module):
 
 
 class BETModel():
-    def __init__(self, weights_fpath, base_filters=24, device='cuda:0') -> None:
+    def __init__(self, weights_fpath, postproc=False, base_filters=24, device='cuda:0') -> None:
         self.device = torch.device(device)
+
+        self.postproc = postproc
 
         self.load_model(weights_fpath, base_filters)
 
@@ -370,6 +372,10 @@ class BETModel():
     def prepare_pred(self, pred: np.ndarray, og_image: nib.Nifti1Image) -> nib.Nifti1Image:
         """Get mask prediction into NIfTI format and apply mask to `og_image`.
         """
+        # post-processing
+        if self.postproc:
+            pred = self.postprocessing(pred)
+
         # undo reshaping
         pred = pred.transpose((1, 2, 0))
 
@@ -384,6 +390,20 @@ class BETModel():
 
         return brain_image, pred_image
 
+    def postprocessing(self, pred: np.ndarray) -> np.ndarray:
+        """Keep only largest component.
+        """
+        pred_labels = label(pred, connectivity=3)
+
+        labels_count = np.bincount(pred_labels.flatten())
+        labels_count = labels_count[1:]  # skip background label
+
+        biggest_comp = np.argmax(labels_count) + 1
+
+        pp_pred = pred * (pred_labels == biggest_comp)
+
+        return pp_pred
+
     def __call__(self, image: nib.Nifti1Image) -> nib.Nifti1Image:
         """Run standard use of the model.
         """
@@ -395,7 +415,8 @@ class BETModel():
 
         return brain_image, pred_image
 
-def bet(in_file_fpath, out_prefix, weights_fpath=None, device=None):
+def bet(in_file_fpath, out_prefix, weights_fpath=None, device=None,
+        postproc=False):
     if weights_fpath is None:
         weights_fpath = os.environ['BET_MODEL_WEIGHTS']
 
@@ -415,7 +436,7 @@ def bet(in_file_fpath, out_prefix, weights_fpath=None, device=None):
             "unexpected `{device}` device"
 
     # instantiate model
-    bet_model = BETModel(weights_fpath, device=device)
+    bet_model = BETModel(weights_fpath, device=device, postproc=postproc)
 
     input_image = nib.load(in_file_fpath)
     brain_image, mask_image = bet_model(input_image)

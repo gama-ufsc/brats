@@ -322,12 +322,14 @@ class PreprocessorOurBET(Preprocessor):
     """
     def __init__(self, template_fpath: str, weights_fpath: str, tmpdir: str,
                  bet_modality='FLAIR', bet_first=False, num_threads=-1,
-                 device='gpu'):
+                 device='gpu', postproc=False):
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
                          bet_first=bet_first, num_threads=num_threads,
                          device=device)
 
         self.weights_fpath = weights_fpath
+
+        self.postproc = postproc
 
     def _bet(self, modality_fpath):
         s_time = time()
@@ -335,7 +337,8 @@ class PreprocessorOurBET(Preprocessor):
             modality_fpath,
             os.path.join(self.tmpdir, 'brain_'),
             self.weights_fpath,
-            self.device
+            self.device,
+            self.postproc
         )
         f_time = time()
 
