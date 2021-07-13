@@ -63,8 +63,8 @@ def make_nnunet_tcga_dataset(dataset_dir, target_images_dir, overwrite):
 
         _create_or_overwrite(new_flair, flair, overwrite)
         _create_or_overwrite(new_t1, t1, overwrite)
-        # _create_or_overwrite(new_t1c, t1c, overwrite)
-        # _create_or_overwrite(new_t2, t2, overwrite)
+        _create_or_overwrite(new_t1c, t1c, overwrite)
+        _create_or_overwrite(new_t2, t2, overwrite)
 
     return patient_names
 
