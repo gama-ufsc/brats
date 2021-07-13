@@ -8,6 +8,7 @@ import numpy as np
 
 from nibabel.viewers import OrthoSlicer3D
 from nipype.interfaces.dcm2nii import Dcm2nii, Dcm2niix
+from scipy.ndimage.morphology import distance_transform_edt as edt
 
 
 def get_orthoslicer(img, pos=(0, 0, 0), clipping=0.0):
@@ -100,11 +101,15 @@ def show_mri(image, overlay=None, pos=(0, 0, 0), plot_bounding_box=False,
     ortho_image.show()
 
 
-def dice(p: np.ndarray, l: np.ndarray):
-    """ Assume > 0 as foreground.
+def dice(p: np.ndarray, l: np.ndarray, c: float = None):
+    """ If class `c` is not provided, computes foreground dice (> 0).
     """
-    _p = (p > 0).astype(int)
-    _l = (l > 0).astype(int)
+    if c is None:
+        _p = (p > 0).astype(int)
+        _l = (l > 0).astype(int)
+    else:
+        _p = (p >= c).astype(int)
+        _l = (l >= c).astype(int)
 
     inter = (_p * _l).sum()
     union = _p.sum() + _l.sum()
@@ -145,3 +150,14 @@ def dcm2nifti(dcm_fpaths, tmpdir):
     res = conv.run()
 
     return res.outputs.converted_files
+
+def hd_distance(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """From https://github.com/SilmarilBearer/HausdorffLoss/"""
+    if np.count_nonzero(x) == 0 or np.count_nonzero(y) == 0:
+        return np.array([np.Inf])
+
+    indexes = np.nonzero(x)
+    distances = edt(np.logical_not(y))
+
+    # return np.array(np.max(distances[indexes]))
+    return np.array(np.quantile(distances[indexes], 0.95))
