@@ -9,24 +9,17 @@ def hd_bet(in_file_fpath, out_prefix, device=None, mode=None, tta=None, pp=None)
     out_prefix = Path(out_prefix)
 
     cmd = f"hd-bet -i {in_file_fpath} -o {out_prefix}"
-    if device == 'cpu':
-        if mode is None:
-            mode = 'fast'
-        if tta is None:
-            tta = '0'
 
-        cmd += f" -mode {mode} -device {device} -tta {tta}"
-    else:
-        if mode is not None:
-            cmd += f" -mode {mode}"
+    if mode is not None:
+        cmd += f" -mode {mode}"
 
-        if device is not None:
-            if device == 'gpu':
-                device = 0
-            cmd += f" -device {device}"
+    if device is not None:
+        if device == 'gpu':
+            device = 0
+        cmd += f" -device {device}"
 
-        if tta is not None:
-            cmd += f" -tta {tta}"
+    if tta is not None:
+        cmd += f" -tta {tta}"
 
     if pp is not None:
         cmd += f" -pp {pp}"
