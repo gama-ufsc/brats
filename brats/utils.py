@@ -7,7 +7,7 @@ import nibabel as nib
 import numpy as np
 
 from nibabel.viewers import OrthoSlicer3D
-from nipype.interfaces.dcm2nii import Dcm2nii
+from nipype.interfaces.dcm2nii import Dcm2nii, Dcm2niix
 
 
 def get_orthoslicer(img, pos=(0, 0, 0), clipping=0.0):
@@ -121,10 +121,25 @@ def compute_foreground_dices(preds_fpaths, labels_fpaths):
 
     return f_dices
 
-def dcm2nifti(dcm_fpaths, tmpdir):
-    conv = Dcm2nii()
+def compute_all_dices(preds_fpaths, labels_fpaths):
+    scores = [list() for _ in  range(3)]
 
-    conv.inputs.source_names = [str(d) for d in dcm_fpaths]
+    for pred_fpath, label_fpath in zip(preds_fpaths, labels_fpaths):
+        pred = nib.load(pred_fpath).get_fdata()
+        label = nib.load(label_fpath).get_fdata()
+
+        for c in range(1,3+1):
+            scores[c-1].append(dice(pred, label, c))
+
+    # transpose
+    scores = list(map(tuple, zip(*scores)))
+
+    return scores
+
+def dcm2nifti(dcm_fpaths, tmpdir):
+    conv = Dcm2niix()
+
+    conv.inputs.source_dir = str(dcm_fpaths)
     conv.inputs.output_dir = str(tmpdir)
 
     res = conv.run()
