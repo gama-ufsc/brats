@@ -3,7 +3,7 @@ from logging import warn
 from time import time
 import os
 
-from typing import Tuple
+from typing import List, Tuple, Dict
 from pathlib import Path
 
 import nibabel as nib
@@ -43,46 +43,57 @@ class Preprocessor(ABC):
         os.makedirs(tmpdir, exist_ok=True)
         self.tmpdir = tmpdir
 
-    def registration(self, flair_fpath: str, t1_fpath: str):
-        transforms = list()
+    def registration(self, modalities: Dict[str,str]
+                    ) -> Tuple[Dict[str,str],Dict[str,List[str]]]:
+        """Register modalities to template using T1 as reference.
 
-        # flair to t1 (within-subject) registration
-        wsr_transform_fpath, _ = ants_registration(
-            t1_fpath,
-            flair_fpath,
-            os.path.join(self.tmpdir, 'wsr_transform_'),
-            self.num_threads,
-        )
-        transforms.insert(0, wsr_transform_fpath)
+        Args:
+            modalities: dict containing the fpath of each modality to be
+            registered.
+        
+        Returns:
+            modalities_at_template: similar to `modalities`, but with them at
+            the template's space.
+            transforms: dict containing the transforms of each modality from
+            their original space to the template space.
+        """
+        modalities_at_template = dict()
+
+        transforms = dict()
+        for mod in modalities:
+            transforms[mod] = list()
 
         # t1 (subject) to template registration
         str_transform_fpath, _ = ants_registration(
             self.template_fpath,
-            t1_fpath,
+            modalities['t1'],
             os.path.join(self.tmpdir, 'str_transform_'),
             self.num_threads,
         )
-        transforms.insert(0, str_transform_fpath)
 
-        # apply transformations to flair
-        flair_at_template_fpath = ants_transformation(
-            flair_fpath,
-            self.template_fpath,
-            transforms,
-            os.path.join(self.tmpdir, 'flair_template_'),
-            self.num_threads,
-        )
+        # within-subject registration
+        for mod, mod_fpath in modalities.items():
+            transforms[mod].append(str_transform_fpath)
 
-        # apply transformations to t1
-        t1_at_template_fpath = ants_transformation(
-            t1_fpath,
-            self.template_fpath,
-            transforms,
-            os.path.join(self.tmpdir, 't1_template_'),
-            self.num_threads
-        )
+            if mod != 't1':
+                wsr_transform_fpath, _ = ants_registration(
+                    modalities['t1'],
+                    mod_fpath,
+                    os.path.join(self.tmpdir, 'wsr_transform_'),
+                    self.num_threads,
+                )
+                transforms[mod].append(wsr_transform_fpath)
 
-        return flair_at_template_fpath, t1_at_template_fpath, transforms
+            # apply transformations
+            modalities_at_template[mod] = ants_transformation(
+                mod_fpath,
+                self.template_fpath,
+                transforms[mod],
+                os.path.join(self.tmpdir, mod+'_template_'),
+                self.num_threads,
+            )
+
+        return modalities_at_template, transforms
 
     @abstractmethod
     def _bet(self, modality_fpath) -> Tuple[str, str]:
@@ -114,86 +125,97 @@ class Preprocessor(ABC):
 
         return brain_fpath, brain_mask_fpath
 
-    def bet(self, flair_fpath, t1_fpath, flair_at_template_fpath,
-            t1_at_template_fpath, transforms):
-        if self.bet_modality == 't1':
+    def bet(self, modalities, modalities_at_template, transforms
+           ) -> Dict[str,str]:
+        """Perform brain extraction given object parameters.
+        
+        Args:
+            modalities: dict of paths to the raw modalities (see `self.run`).
+            modalities_at_tempalte: dict of paths to the modalities at template
+            space (see `self.registration`).
+            transforms: dict of the transforms for each modality from their
+            original space to the template space (see `self.registration`).
+        """
+        modalities_brain = dict()
+        if self.bet_modality in modalities_at_template:
             if self.bet_first:
-                t1_brain_fpath, brain_mask_fpath = self.bet_transform_apply(
-                    t1_fpath, t1_at_template_fpath, transforms
+                mod_brain_fpath, brain_mask_fpath = self.bet_transform_apply(
+                    modalities[self.bet_modality],
+                    modalities_at_template[self.bet_modality],
+                    transforms[self.bet_modality]
                 )
             else:
-                t1_brain_fpath, brain_mask_fpath = self._bet(t1_at_template_fpath)
-
-            flair_brain_fpath = fsl_applymask(
-                flair_at_template_fpath,
-                brain_mask_fpath,
-                os.path.join(self.tmpdir, 'brain_')
-            )
-        elif self.bet_modality == 'flair':
-            if self.bet_first:
-                flair_brain_fpath, brain_mask_fpath = self.bet_transform_apply(
-                    flair_fpath, flair_at_template_fpath, transforms
+                mod_brain_fpath, brain_mask_fpath = self._bet(
+                    modalities_at_template[self.bet_modality]
                 )
-            else:
-                flair_brain_fpath, brain_mask_fpath = self._bet(flair_at_template_fpath)
-
-            t1_brain_fpath = fsl_applymask(
-                t1_at_template_fpath,
-                brain_mask_fpath,
-                os.path.join(self.tmpdir, 'brain_')
-            )
+            
+            for mod in modalities_at_template:
+                if mod == self.bet_modality:
+                    modalities_brain[mod] = mod_brain_fpath
+                else:
+                    modalities_brain[mod] = fsl_applymask(
+                        modalities_at_template[mod],
+                        brain_mask_fpath,
+                        os.path.join(self.tmpdir, 'brain_')
+                    )
         elif self.bet_modality == 'all':
-            if self.bet_first:
-                flair_brain_fpath, _ = self.bet_transform_apply(
-                    flair_fpath, flair_at_template_fpath, transforms
-                )
+            for mod in modalities_at_template:
+                if self.bet_first:
+                        modalities_brain[mod], _ = self.bet_transform_apply(
+                            modalities[mod],
+                            modalities_at_template[mod],
+                            transforms[mod]
+                        )
+                else:
+                    modalities_brain[mod], _ = self._bet(
+                        modalities_at_template[mod]
+                    )
+        else:
+            raise AttributeError('`{self.bet_modality}` is not a valid'
+                                 ' reference for betting.')
 
-                t1_brain_fpath, _ = self.bet_transform_apply(
-                    t1_fpath, t1_at_template_fpath, transforms
-                )
-            else:
-                flair_brain_fpath, _ = self._bet(flair_at_template_fpath)
-                t1_brain_fpath, _ = self._bet(t1_at_template_fpath)
+        return modalities_brain
 
-        return flair_brain_fpath, t1_brain_fpath
-
-    def run(self, flair_fpath: str, t1_fpath: str) -> nib.Nifti1Image:
+    def run(self, flair_fpath: str = None, t1_fpath: str = None,
+            t1ce_fpath: str = None, t2_fpath: str = None
+            ) -> Tuple[Dict[str,nib.Nifti1Image], Dict[str,List[str]]]:
         """Run preprocessing pipeline.
 
         Args:
-            flair_fpath: path to nifti image containing the FLAIR modality of
-            the subject. Main object of the preprocessing operations.
-            t1_fpath: Path to nifti image containing the T1 modality of the
-            subject. Used to align the subject to the template.
+            *_fpath: path to nifti image containing the * modality of the
+            subject. Main object of the preprocessing operations.
 
         Returns:
-            flair_image: Preprocessed and loaded `flair_image`.
+            images: dict containing preprocessed and loaded modalities.
             reverse_transform: Path to matrices that reverse the raw to
             preprocessed transformation.
         """
-        (
-            flair_at_template_fpath,
-            t1_at_template_fpath,
-            transforms
-        ) = self.registration(flair_fpath, t1_fpath)
+        modalities = dict()
 
-        flair_brain_fpath, t1_brain_fpath = self.bet(
-            flair_fpath,
-            t1_fpath,
-            flair_at_template_fpath,
-            t1_at_template_fpath,
-            transforms
-        )
+        for mod in ['t1', 'flair', 't2', 't1ce']:
+            mod_fpath = eval(mod+'_fpath')
+            if mod_fpath is not None:
+                modalities[mod] = mod_fpath
+            else:
+                if self.bet_modality == mod:
+                    raise ValueError(
+                        'At least the reference modality for'
+                        ' betting must be provided'
+                    )
+
+        modalities_at_template, transforms = self.registration(modalities)
+
+        modalities_brain = self.bet(modalities, modalities_at_template,
+                                    transforms)
 
         # load images
-        flair_image = nib.load(flair_brain_fpath)
-        t1_image = nib.load(t1_brain_fpath)
+        modalities_brain = {mod: nib.load(mod_fpath)
+                            for mod, mod_fpath in modalities_brain.items()}
 
-        return flair_image, t1_image, transforms
+        return modalities_brain, transforms
 
-    def transform_prediction(self, pred: nib.Nifti1Image,
-                             reverse_transforms: list, original_image: str
-                            ) -> nib.Nifti1Image:
+    def transform_prediction(self, pred: nib.Nifti1Image, transforms: list,
+                             original_image: str) -> nib.Nifti1Image:
         """Transform prediction to original image's space.
         """
         # save pred file in case it is not yet
@@ -210,7 +232,7 @@ class Preprocessor(ABC):
         transformed_pred_image = ants_transformation(
             pred.get_filename(),
             original_image,
-            reverse_transforms,
+            transforms,
             os.path.join(self.tmpdir, 'transf_pred_'),
             self.num_threads,
             interpolation='NearestNeighbor',
@@ -260,12 +282,9 @@ class PreprocessorHDBET(Preprocessor):
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_modality='FLAIR',
                  bet_first=False, num_threads=-1, device='gpu', **hdbet_kwargs):
-        if device.lower() == 'cpu':
-            warn('HD-BET on CPU not implemented, switching to GPU')
-
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
                          bet_first=bet_first, num_threads=num_threads,
-                         device='gpu')
+                         device=device)
 
         self.hdbet_kwargs = hdbet_kwargs
 
@@ -278,6 +297,7 @@ class PreprocessorHDBET(Preprocessor):
                 os.path.basename(modality_fpath).replace('.nii', '') \
                                                 .replace('.gz', '')) \
                                                 + '_mask',
+            device=self.device,
             **self.hdbet_kwargs
         )
         f_time = time()
