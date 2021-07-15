@@ -150,7 +150,7 @@ class Preprocessor(ABC):
                 mod_brain_fpath, brain_mask_fpath = self._bet(
                     modalities_at_template[self.bet_modality]
                 )
-            
+
             for mod in modalities_at_template:
                 if mod == self.bet_modality:
                     modalities_brain[mod] = mod_brain_fpath
@@ -163,20 +163,23 @@ class Preprocessor(ABC):
         elif self.bet_modality == 'all':
             for mod in modalities_at_template:
                 if self.bet_first:
-                        modalities_brain[mod], _ = self.bet_transform_apply(
+                        (
+                            modalities_brain[mod],
+                            brain_mask_fpath
+                        ) = self.bet_transform_apply(
                             modalities[mod],
                             modalities_at_template[mod],
                             transforms[mod]
                         )
                 else:
-                    modalities_brain[mod], _ = self._bet(
+                    modalities_brain[mod], brain_mask_fpath = self._bet(
                         modalities_at_template[mod]
                     )
         else:
             raise AttributeError('`{self.bet_modality}` is not a valid'
                                  ' reference for betting.')
 
-        return modalities_brain
+        return modalities_brain, brain_mask_fpath
 
     def run(self, flair_fpath: str = None, t1_fpath: str = None,
             t1ce_fpath: str = None, t2_fpath: str = None
@@ -212,8 +215,8 @@ class Preprocessor(ABC):
             self.num_threads,
         )
 
-        modalities_brain = self.bet(modalities, modalities_at_template,
-                                    transforms)
+        modalities_brain, _ = self.bet(modalities, modalities_at_template,
+                                       transforms)
 
         # load images
         modalities_brain = {mod: nib.load(mod_fpath)
