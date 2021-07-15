@@ -43,8 +43,10 @@ class Preprocessor(ABC):
         os.makedirs(tmpdir, exist_ok=True)
         self.tmpdir = tmpdir
 
-    def registration(self, modalities: Dict[str,str]
-                    ) -> Tuple[Dict[str,str],Dict[str,List[str]]]:
+    @staticmethod
+    def registration(modalities: Dict[str,str], template_fpath: str,
+                     tmpdir: str, num_threads=-1) -> Tuple[Dict[str,str],
+                                                           Dict[str,List[str]]]:
         """Register modalities to template using T1 as reference.
 
         Args:
@@ -65,10 +67,10 @@ class Preprocessor(ABC):
 
         # t1 (subject) to template registration
         str_transform_fpath, _ = ants_registration(
-            self.template_fpath,
+            template_fpath,
             modalities['t1'],
-            os.path.join(self.tmpdir, 'str_transform_'),
-            self.num_threads,
+            os.path.join(tmpdir, 'str_transform_'),
+            num_threads,
         )
 
         # within-subject registration
@@ -79,18 +81,18 @@ class Preprocessor(ABC):
                 wsr_transform_fpath, _ = ants_registration(
                     modalities['t1'],
                     mod_fpath,
-                    os.path.join(self.tmpdir, 'wsr_transform_'),
-                    self.num_threads,
+                    os.path.join(tmpdir, 'wsr_transform_'),
+                    num_threads,
                 )
                 transforms[mod].append(wsr_transform_fpath)
 
             # apply transformations
             modalities_at_template[mod] = ants_transformation(
                 mod_fpath,
-                self.template_fpath,
+                template_fpath,
                 transforms[mod],
-                os.path.join(self.tmpdir, mod+'_template_'),
-                self.num_threads,
+                os.path.join(tmpdir, mod+'_template_'),
+                num_threads,
             )
 
         return modalities_at_template, transforms
@@ -203,7 +205,12 @@ class Preprocessor(ABC):
                         ' betting must be provided'
                     )
 
-        modalities_at_template, transforms = self.registration(modalities)
+        modalities_at_template, transforms = self.registration(
+            modalities,
+            self.template_fpath,
+            self.tmpdir,
+            self.num_threads,
+        )
 
         modalities_brain = self.bet(modalities, modalities_at_template,
                                     transforms)
