@@ -28,7 +28,7 @@ def hd_bet(in_file_fpath, out_prefix, device=None, mode=None, tta=None, pp=None)
 
     _ = subprocess.run(cmd, shell=True, check=True)
 
-    out_file_fpath = out_prefix.with_suffix('.nii.gz')
+    out_file_fpath = Path(str(out_prefix) + '.nii.gz')
     mask_fpath = Path(str(out_prefix) + '_mask.nii.gz')
 
     return out_file_fpath, mask_fpath
