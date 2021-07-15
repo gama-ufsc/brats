@@ -1,4 +1,5 @@
 import os
+import shutil
 
 from pathlib import Path
 
@@ -149,7 +150,24 @@ def dcm2nifti(dcm_fpaths, tmpdir):
 
     res = conv.run()
 
-    return res.outputs.converted_files
+    # fix bad characters in filepath
+    if isinstance(res.outputs.converted_files, list):
+        fpaths = list()
+        for fpath in res.outputs.converted_files:
+            src = Path(fpath)
+            dst = src.parent / src.name.replace('(', '').replace(')', '')
+
+            shutil.move(src, dst)
+
+            fpaths.append(dst)
+        return fpaths
+    else:
+        src = Path(res.outputs.converted_files)
+        dst = src.parent / src.name.replace('(', '').replace(')', '')
+
+        shutil.move(src, dst)
+
+        return dst
 
 def hd_distance(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """From https://github.com/SilmarilBearer/HausdorffLoss/"""
