@@ -20,7 +20,7 @@ class Preprocessor(ABC):
     Aligns the FLAIR and T1 modalities to a T1 template using ANTs functions.
     Also performs brain extraction (BET defined by child).
     """
-    def __init__(self, template_fpath: str, tmpdir: str, bet_modality='FLAIR',
+    def __init__(self, template_fpath: str, tmpdir: str, bet_modality='T1',
                  bet_first=False, num_threads=-1, device='gpu'):
         assert os.path.exists(template_fpath), (
             '`template` must be a valid path to the template image'
@@ -52,7 +52,7 @@ class Preprocessor(ABC):
         Args:
             modalities: dict containing the fpath of each modality to be
             registered.
-        
+
         Returns:
             modalities_at_template: similar to `modalities`, but with them at
             the template's space.
@@ -176,8 +176,8 @@ class Preprocessor(ABC):
                         modalities_at_template[mod]
                     )
         else:
-            raise AttributeError('`{self.bet_modality}` is not a valid'
-                                 ' reference for betting.')
+            raise AttributeError(f'`{self.bet_modality}` is not a valid'
+                                  ' reference for betting.')
 
         return modalities_brain, brain_mask_fpath
 
