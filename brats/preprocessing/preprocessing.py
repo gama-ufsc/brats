@@ -10,8 +10,8 @@ import nibabel as nib
 
 from .bet import bet as our_bet
 from .hdbet_wrapper import hd_bet
-from .brainmage_wrapper import brainmage
 from .nipype_wrappers import ants_registration, ants_transformation, fsl_bet, fsl_applymask
+from .brainmage_wrapper import brainmage, brainmage_multi4
 
 
 class Preprocessor(ABC):
@@ -323,6 +323,92 @@ class PreprocessorBrainMaGe(Preprocessor):
     Aligns the FLAIR and T1 modalities to a T1 template. Also performs brain
     extraction.
     """
+    def __init__(self, template_fpath: str, tmpdir: str, bet_modality='T1',
+                 mode='ma', bet_first=False, num_threads=-1, device='gpu'):
+
+        super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
+                         bet_first=bet_first, num_threads=num_threads,
+                         device=device)
+
+        assert mode.lower() in ['ma', 'multi4'], f'{mode} is not supported (only `ma` or `multi4`)'
+        self.mode = mode.lower()
+
+    def bet(self, modalities, modalities_at_template, transforms
+           ) -> Dict[str,str]:
+        """Perform brain extraction given object parameters.
+        
+        Args:
+            modalities: dict of paths to the raw modalities (see `self.run`).
+            modalities_at_tempalte: dict of paths to the modalities at template
+            space (see `self.registration`).
+            transforms: dict of the transforms for each modality from their
+            original space to the template space (see `self.registration`).
+        """
+        if self.mode != 'multi4':
+            return super().bet(modalities, modalities_at_template, transforms)
+        else:
+            if self.bet_first:
+                _modalities = {m+'_fpath':fp for m, fp in modalities.items()}
+            else:
+                _modalities = {m+'_fpath':fp
+                               for m, fp in modalities_at_template.items()}
+
+            (
+                t1_brain_fpath,
+                t2_brain_fpath,
+                t1ce_brain_fpath,
+                flair_brain_fpath,
+                brain_mask_fpath
+            ) = self._bet_multi_4(**_modalities)
+
+            modalities_brain = dict()
+            ms = set(modalities.keys()).union(set(modalities_at_template.keys()))
+            for m in ms:
+                modalities_brain[m] = eval(m+'_brain_fpath')
+
+            return modalities_brain, brain_mask_fpath
+
+    def _bet_multi_4(self, t1_fpath, t2_fpath, t1ce_fpath, flair_fpath):
+        brain_mask_fpath = os.path.join(
+            self.tmpdir,
+            'mask_' + os.path.basename(t1_fpath)
+        )
+        s_time = time()
+        brain_mask_fpath = brainmage_multi4(
+            t1_fpath,
+            t2_fpath,
+            t1ce_fpath,
+            flair_fpath,
+            brain_mask_fpath,
+            device=self.device
+        )
+        f_time = time()
+
+        self.bet_cost_hist.append(f_time - s_time)
+
+        t1_brain_fpath = fsl_applymask(
+            t1_fpath,
+            brain_mask_fpath,
+            os.path.join(self.tmpdir, 'brain_')
+        )
+        t2_brain_fpath = fsl_applymask(
+            t2_fpath,
+            brain_mask_fpath,
+            os.path.join(self.tmpdir, 'brain_')
+        )
+        t1ce_brain_fpath = fsl_applymask(
+            t1ce_fpath,
+            brain_mask_fpath,
+            os.path.join(self.tmpdir, 'brain_')
+        )
+        flair_brain_fpath = fsl_applymask(
+            flair_fpath,
+            brain_mask_fpath,
+            os.path.join(self.tmpdir, 'brain_')
+        )
+
+        return t1_brain_fpath, t2_brain_fpath, t1ce_brain_fpath, flair_brain_fpath, brain_mask_fpath
+
     def _bet(self, modality_fpath):
         brain_mask_fpath = os.path.join(
             self.tmpdir,
