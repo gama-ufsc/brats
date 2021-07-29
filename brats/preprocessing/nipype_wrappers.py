@@ -1,6 +1,7 @@
 import os
 
 from nipype.interfaces import ants, fsl
+from nipype.interfaces.freesurfer import WatershedSkullStrip, Normalize
 
 
 def ants_registration(fixed_image_fpath, moving_image_fpath,
@@ -73,7 +74,7 @@ def fsl_bet(in_file_fpath, out_prefix: str, fast=False) -> str:
     if `fast` is false (default), runs reduced bias BET variant (much slower).
     """
     bet = fsl.BET()
-    bet.inputs.in_file = in_file_fpath
+    bet.inputs.in_file = str(in_file_fpath)
     bet.inputs.mask = False
 
     bet.inputs.frac = 0.50
@@ -117,5 +118,46 @@ def fsl_applymask(in_file_fpath, mask_file_fpath, out_prefix):
     apply.inputs.out_file = out_prefix + os.path.basename(in_file_fpath)
 
     res = apply.run()
+
+    return res.outputs.out_file
+
+
+def freesurfer_normalize(in_file_fpath, out_prefix: str) -> str:
+    """Run FreeSurfer's normalization routine.
+    """
+    norm = Normalize()
+
+    norm.inputs.in_file = str(in_file_fpath)
+    norm.inputs.out_file = out_prefix + '_interim_' + os.path.basename(in_file_fpath)
+
+    norm_res = norm.run()
+
+    return norm_res.outputs.out_file
+
+
+def freesurfer_bet(in_file_fpath, out_prefix: str, brain_atlas: bool = False,
+                   normalize: bool = False) -> str:
+    """Run FreeSurfer's watershed algorithm for skull stripping.
+    """
+    if normalize:
+        _in_file = freesurfer_normalize(in_file_fpath, out_prefix + '_norm_')
+    else:
+        _in_file = str(in_file_fpath)
+
+    sks = WatershedSkullStrip()
+
+    sks.inputs.in_file = _in_file
+    sks.inputs.out_file = out_prefix + os.path.basename(in_file_fpath)
+
+    if brain_atlas:
+        sks.inputs.args = '-atlas'
+
+    try:
+        res = sks.run()
+    except RuntimeError:
+        sks.inputs.in_file = freesurfer_normalize(in_file_fpath,
+                                                  out_prefix + '_norm_')
+
+        res = sks.run()
 
     return res.outputs.out_file

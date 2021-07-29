@@ -8,10 +8,12 @@ from pathlib import Path
 
 import nibabel as nib
 
+from scipy.ndimage import binary_fill_holes as fill_holes
+
 from .bet import bet as our_bet
 from .hdbet_wrapper import hd_bet
-from .nipype_wrappers import ants_registration, ants_transformation, fsl_bet, fsl_applymask
 from .brainmage_wrapper import brainmage, brainmage_multi4
+from .nipype_wrappers import ants_registration, ants_transformation, fsl_bet, fsl_applymask, freesurfer_bet
 
 
 class Preprocessor(ABC):
@@ -250,6 +252,49 @@ class Preprocessor(ABC):
         )
 
         return nib.load(transformed_pred_image)
+
+
+class PreprocessorFreeSurfer(Preprocessor):
+    """Preprocessing module of BraTS pipeline using FreeSurfer's skullstripper.
+
+    Aligns the FLAIR and T1 modalities to a T1 template. Also performs brain
+    extraction.
+    """
+    def __init__(self, template_fpath: str, tmpdir: str, fast_bet=True,
+                 bet_modality='T1', bet_first=False, num_threads=-1,
+                 device='cpu'):
+        assert device.lower() == 'cpu', 'only cpu supported by FreeSurfer'
+
+        super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
+                         bet_first=bet_first, num_threads=num_threads,
+                         device=device)
+
+        self.fast_bet = fast_bet
+
+    def _bet(self, modality_fpath):
+        s_time = time()
+        # extract brain
+        brain_fpath = freesurfer_bet(
+            modality_fpath,
+            os.path.join(self.tmpdir, 'brain_'),
+            brain_atlas=not self.fast_bet,
+        )
+        f_time = time()
+
+        self.bet_cost_hist.append(f_time - s_time)
+
+        # mask generation
+        brain = nib.load(brain_fpath)
+
+        mask_data = fill_holes(brain.get_fdata() != 0)
+
+        mask = nib.Nifti1Image(mask_data, brain.affine, brain.header)
+
+        brain_mask_fpath = os.path.join(self.tmpdir,
+                                        'mask_'+os.path.basename(brain_fpath))
+        nib.save(mask, brain_mask_fpath)
+
+        return brain_fpath, brain_mask_fpath
 
 
 class PreprocessorFSL(Preprocessor):

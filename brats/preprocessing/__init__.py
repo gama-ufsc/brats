@@ -1,1 +1,1 @@
-from .preprocessing import PreprocessorFSL, PreprocessorHDBET, PreprocessorBrainMaGe, PreprocessorOurBET
+from .preprocessing import PreprocessorFSL, PreprocessorHDBET, PreprocessorBrainMaGe, PreprocessorOurBET, PreprocessorFreeSurfer
