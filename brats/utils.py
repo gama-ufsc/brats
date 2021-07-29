@@ -15,17 +15,21 @@ from scipy.ndimage.morphology import distance_transform_edt as edt
 def get_orthoslicer(img, pos=(0, 0, 0), label=None, clipping=None):
     img_data = img.get_fdata()
 
-    # clipping
-    if clipping is not None:
-        bot_clip = np.quantile(img_data, clipping)
-        top_clip = np.quantile(img_data, 1-clipping)
-        img_data[img_data < bot_clip] = bot_clip
-        img_data[img_data > top_clip] = top_clip
-
     if label is not None:
         img_data = (img_data >= label).astype(int)
 
     v = OrthoSlicer3D(img_data, title=str(img.shape), affine=img.affine)
+
+    if clipping is not None:
+        bot_clip = np.quantile(img_data, clipping)
+        top_clip = np.quantile(img_data, 1-clipping)
+        v.clim = np.array([bot_clip, top_clip])
+    else:
+        unique_classes = np.unique(img_data)
+        if len(unique_classes) < 50:  # no seg with more than 50 classes, right?
+            # it seems that nibabel clips top 1% automatically
+            v.clim = np.array([np.min(unique_classes), np.max(unique_classes)])
+
     v.set_position(*pos)
 
     return v
