@@ -214,21 +214,23 @@ def dcm2nifti(dcm_fpaths, tmpdir):
 
     res = conv.run()
 
+    def _move(src):
+        dst = src.parent / src.name.replace('(', '').replace(')', '').replace(',', '')
+
+        shutil.move(src, dst)
+
+        return dst
+
     # fix bad characters in filepath
     if isinstance(res.outputs.converted_files, list):
         fpaths = list()
         for fpath in res.outputs.converted_files:
             src = Path(fpath)
-            dst = src.parent / src.name.replace('(', '').replace(')', '')
-
-            shutil.move(src, dst)
+            dst = _move(src)
 
             fpaths.append(dst)
         return fpaths
     else:
         src = Path(res.outputs.converted_files)
-        dst = src.parent / src.name.replace('(', '').replace(')', '')
 
-        shutil.move(src, dst)
-
-        return dst
+        return _move(src)
