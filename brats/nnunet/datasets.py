@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
+import shutil
+
 from batchgenerators.utilities.file_and_folder_operations import *
 from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
 
+from nipype.interfaces.fsl import Reorient2Std
 from tqdm import tqdm
 
 
@@ -44,8 +47,8 @@ def make_nnunet_tcga_dataset(dataset_dir, target_images_dir, overwrite):
         assert all([
             flair.exists(),
             t1.exists(),
-            # t1c.exists(),
-            # t2.exists(),
+            t1c.exists(),
+            t2.exists(),
         ]), "%s doesn't have all modalities" % patient_name
 
         new_flair = Path(target_images_dir, patient_name + "_0000.nii.gz")
@@ -91,7 +94,8 @@ def make_nnunet_lemon_dataset(lemon_dir, target_images_dir):
 
     return patient_names
 
-def make_nnunet_dataset(patient_dirs, target_images_dir, target_seg_dir=None):
+def make_nnunet_dataset(patient_dirs, target_images_dir, target_seg_dir=None,
+                        reorient=True):
     target_images_dir = Path(target_images_dir)
 
     if target_seg_dir is not None:
@@ -121,22 +125,48 @@ def make_nnunet_dataset(patient_dirs, target_images_dir, target_seg_dir=None):
         new_t1c = Path(target_images_dir, patient_name + "_0002.nii.gz")
         new_t2 = Path(target_images_dir, patient_name + "_0003.nii.gz")
 
-        def _create_or_overwrite(symlink_path, dst_path, overwrite: bool):
-            try:
-                symlink_path.symlink_to(dst_path)
-            except FileExistsError:
-                if overwrite:
-                    symlink_path.unlink()
-                    symlink_path.symlink_to(dst_path)
+        def _create_or_overwrite(dst_path, src_path, overwrite: bool,
+                                 reorient=True):
+            if reorient:
+                if overwrite or not dst_path.exists():
+                    reor = Reorient2Std()
+                    reor.inputs.in_file = src_path
 
-        _create_or_overwrite(new_flair, flair, True)
-        _create_or_overwrite(new_t1, t1, True)
-        _create_or_overwrite(new_t1c, t1c, True)
-        _create_or_overwrite(new_t2, t2, True)
+                    res =reor.run()
+
+                    shutil.move(res.outputs.out_file, dst_path)
+            else:
+                try:
+                    dst_path.symlink_to(src_path)
+                except FileExistsError:
+                    if overwrite:
+                        dst_path.unlink()
+                        dst_path.symlink_to(src_path)
+
+        _create_or_overwrite(new_flair, flair, True, reorient=reorient)
+        _create_or_overwrite(new_t1, t1, True, reorient=reorient)
+        _create_or_overwrite(new_t1c, t1c, True, reorient=reorient)
+        _create_or_overwrite(new_t2, t2, True, reorient=reorient)
 
         if target_seg_dir is not None:
             seg = Path(patdir, patient_name + "_seg.nii.gz")
             assert seg.exists(), "%s has no segmentation" % patient_name
-            copy_BraTS_segmentation_and_convert_labels(str(seg), str(Path(target_seg_dir, patient_name + ".nii.gz")))
+            tmp_seg = Path(target_seg_dir, '_' + patient_name + ".nii.gz")
+            copy_BraTS_segmentation_and_convert_labels(str(seg), str(tmp_seg))
+
+            if reorient:
+                reor = Reorient2Std()
+                reor.inputs.in_file = tmp_seg
+
+                res = reor.run()
+
+                src_seg_path = res.outputs.out_file
+            else:
+                src_seg_path = tmp_seg
+
+            dst_seg_path = Path(target_seg_dir, patient_name + ".nii.gz")
+            shutil.move(src_seg_path, dst_seg_path)
+            if reorient:
+                tmp_seg.unlink()
     
     return patient_names
