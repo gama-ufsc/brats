@@ -2,14 +2,17 @@ import os
 import shutil
 
 from pathlib import Path
+from warnings import warn
 
 import matplotlib.colors as mcolors
 import nibabel as nib
 import numpy as np
 
+from medpy.metric import hd95
 from nibabel.viewers import OrthoSlicer3D
 from nipype.interfaces.dcm2nii import Dcm2nii, Dcm2niix
 from scipy.ndimage.morphology import distance_transform_edt as edt
+from skimage.segmentation import find_boundaries
 
 
 def get_orthoslicer(img, pos=(0, 0, 0), label=None, clipping=None):
@@ -110,8 +113,10 @@ def show_mri(image, overlay=None, overlay_label=None, pos=(0, 0, 0),
     ortho_image.show()
 
 
-def hd_distance(p: np.ndarray, l: np.ndarray, c: float = None) -> np.ndarray:
-    """From https://github.com/SilmarilBearer/HausdorffLoss/"""
+def _hd_distance(p: np.ndarray, l: np.ndarray, c: float = None,
+                do_find_boundaries=True) -> np.ndarray:
+    """Adapted from https://github.com/SilmarilBearer/HausdorffLoss/"""
+    warn('LEGACY FUNCTION')
     if c is None:
         _p = (p > 0).astype(int)
         _l = (l > 0).astype(int)
@@ -122,11 +127,37 @@ def hd_distance(p: np.ndarray, l: np.ndarray, c: float = None) -> np.ndarray:
     if np.count_nonzero(_p) == 0 or np.count_nonzero(_l) == 0:
         return float('inf')
 
-    indexes = np.nonzero(_p)
-    distances = edt(np.logical_not(_l))
+    if do_find_boundaries:
+        _p = find_boundaries(_p, mode='inner', background=0).astype(int)
+        _l = find_boundaries(_l, mode='inner', background=0).astype(int)
 
-    # return np.array(np.max(distances[indexes]))
-    return np.quantile(distances[indexes], 0.95)
+    indexes_p = np.nonzero(_p)
+    indexes_l = np.nonzero(_l)
+    distances_l = edt(np.logical_not(_l))
+    distances_p = edt(np.logical_not(_p))
+
+    distances = np.concatenate((distances_l[indexes_p], distances_p[indexes_l]))
+
+    return np.percentile(distances, 95)
+
+def hd_distance(p: np.ndarray, l: np.ndarray, c: float = None) -> np.ndarray:
+    """From https://github.com/SilmarilBearer/HausdorffLoss/"""
+    if c is None:
+        _p = (p > 0).astype(int)
+        _l = (l > 0).astype(int)
+    else:
+        _p = (p >= c).astype(int)
+        _l = (l >= c).astype(int)
+
+    if np.all(_l == 0):
+        if np.all(_p == 0):
+            return 0
+        else:
+            return np.sqrt(np.sum(np.power(_l.shape, 2)))
+    elif np.all(_p == 0):
+        return np.sqrt(np.sum(np.power(_l.shape, 2)))
+    else:
+        return hd95(_p, _l, voxelspacing=1)
 
 def compute_all_hausdorffs(preds_fpaths, labels_fpaths):
     scores = [list() for _ in  range(3)]
