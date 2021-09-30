@@ -3,10 +3,11 @@ from logging import warn
 from time import time
 import os
 
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Union
 from pathlib import Path
 
 import nibabel as nib
+import numpy as np
 
 from scipy.ndimage import binary_fill_holes as fill_holes
 
@@ -14,6 +15,31 @@ from .bet import bet as our_bet
 from .hdbet_wrapper import hd_bet
 from .brainmage_wrapper import brainmage, brainmage_multi4
 from .nipype_wrappers import ants_registration, ants_transformation, fsl_bet, fsl_applymask, freesurfer_bet
+
+
+def apply_mask_match_brats(image_fpath: Union[str, Path],
+                           mask_fpath: Union[str, Path], out_prefix: str) -> Path:
+    image_fpath = Path(image_fpath)
+    mask_fpath = Path(mask_fpath)
+    out_prefix = Path(out_prefix)
+
+    image = nib.load(image_fpath)
+    mask = nib.load(mask_fpath)
+
+    brain_data = image.get_fdata() * mask.get_fdata()
+    brain_data -= np.min(brain_data)
+    brain_data += 1
+    brain_data[mask.get_fdata() == 0] = 0.0
+
+    brain = nib.Nifti1Image(brain_data, image.affine, image.header)
+
+    if out_prefix.is_dir():
+        brain_fpath = out_prefix / image_fpath.name
+    else:
+        brain_fpath = Path(str(out_prefix) + image_fpath.name)
+    nib.save(brain, brain_fpath)
+
+    return Path(brain.get_filename())
 
 
 class Preprocessor(ABC):
@@ -100,7 +126,7 @@ class Preprocessor(ABC):
         return modalities_at_template, transforms
 
     @abstractmethod
-    def _bet(self, modality_fpath) -> Tuple[str, str]:
+    def _bet(self, modality_fpath) -> str:
         """ BETs `modality_fpath`, returning brain image and mask.
 
         UPDATE `self.bet_cost_hist`!
@@ -109,7 +135,7 @@ class Preprocessor(ABC):
     def bet_transform_apply(self, src_fpath, dst_fpath, transforms):
         """ BETs `src_fpath`, transforms the masks and applies in `dst_fpath`.
         """
-        _, raw_brain_mask_fpath = self._bet(src_fpath)
+        raw_brain_mask_fpath = self._bet(src_fpath)
 
         # transform mask to template space
         brain_mask_fpath = ants_transformation(
@@ -120,19 +146,12 @@ class Preprocessor(ABC):
             self.num_threads,
         )
 
-        # apply mask
-        brain_fpath = fsl_applymask(
-            dst_fpath,
-            brain_mask_fpath,
-            os.path.join(self.tmpdir, 'brain_')
-        )
-
-        return brain_fpath, brain_mask_fpath
+        return brain_mask_fpath
 
     def bet(self, modalities, modalities_at_template, transforms
            ) -> Dict[str,str]:
         """Perform brain extraction given object parameters.
-        
+
         Args:
             modalities: dict of paths to the raw modalities (see `self.run`).
             modalities_at_tempalte: dict of paths to the modalities at template
@@ -143,40 +162,39 @@ class Preprocessor(ABC):
         modalities_brain = dict()
         if self.bet_modality in modalities_at_template:
             if self.bet_first:
-                mod_brain_fpath, brain_mask_fpath = self.bet_transform_apply(
+                brain_mask_fpath = self.bet_transform_apply(
                     modalities[self.bet_modality],
                     modalities_at_template[self.bet_modality],
                     transforms[self.bet_modality]
                 )
             else:
-                mod_brain_fpath, brain_mask_fpath = self._bet(
+                brain_mask_fpath = self._bet(
                     modalities_at_template[self.bet_modality]
                 )
 
             for mod in modalities_at_template:
-                if mod == self.bet_modality:
-                    modalities_brain[mod] = mod_brain_fpath
-                else:
-                    modalities_brain[mod] = fsl_applymask(
-                        modalities_at_template[mod],
-                        brain_mask_fpath,
-                        os.path.join(self.tmpdir, 'brain_')
-                    )
+                modalities_brain[mod] = apply_mask_match_brats(
+                    modalities_at_template[mod],
+                    brain_mask_fpath,
+                    os.path.join(self.tmpdir, 'brain_')
+                )
         elif self.bet_modality == 'all':
             for mod in modalities_at_template:
                 if self.bet_first:
-                        (
-                            modalities_brain[mod],
-                            brain_mask_fpath
-                        ) = self.bet_transform_apply(
-                            modalities[mod],
-                            modalities_at_template[mod],
-                            transforms[mod]
-                        )
+                    brain_mask_fpath = self.bet_transform_apply(
+                        modalities[mod],
+                        modalities_at_template[mod],
+                        transforms[mod]
+                    )
                 else:
-                    modalities_brain[mod], brain_mask_fpath = self._bet(
+                    brain_mask_fpath = self._bet(
                         modalities_at_template[mod]
                     )
+                modalities_brain[mod] = apply_mask_match_brats(
+                    modalities_at_template[mod],
+                    brain_mask_fpath,
+                    os.path.join(self.tmpdir, 'brain_')
+                )
         else:
             raise AttributeError(f'`{self.bet_modality}` is not a valid'
                                   ' reference for betting.')
@@ -294,7 +312,7 @@ class PreprocessorFreeSurfer(Preprocessor):
                                         'mask_'+os.path.basename(brain_fpath))
         nib.save(mask, brain_mask_fpath)
 
-        return brain_fpath, brain_mask_fpath
+        return brain_mask_fpath
 
 
 class PreprocessorFSL(Preprocessor):
@@ -317,7 +335,7 @@ class PreprocessorFSL(Preprocessor):
     def _bet(self, modality_fpath):
         s_time = time()
         # extract brain
-        brain_fpath, brain_mask_fpath = fsl_bet(
+        _, brain_mask_fpath = fsl_bet(
             modality_fpath,
             os.path.join(self.tmpdir, 'brain_'),
             fast=self.fast_bet
@@ -326,7 +344,7 @@ class PreprocessorFSL(Preprocessor):
 
         self.bet_cost_hist.append(f_time - s_time)
 
-        return brain_fpath, brain_mask_fpath
+        return brain_mask_fpath
 
 
 class PreprocessorHDBET(Preprocessor):
@@ -345,7 +363,7 @@ class PreprocessorHDBET(Preprocessor):
 
     def _bet(self, modality_fpath):
         s_time = time()
-        brain_fpath, brain_mask_fpath = hd_bet(
+        _, brain_mask_fpath = hd_bet(
             modality_fpath,
             os.path.join(
                 self.tmpdir,
@@ -359,7 +377,7 @@ class PreprocessorHDBET(Preprocessor):
 
         self.bet_cost_hist.append(f_time - s_time)
 
-        return brain_fpath, brain_mask_fpath
+        return brain_mask_fpath
 
 
 class PreprocessorBrainMaGe(Preprocessor):
@@ -398,18 +416,17 @@ class PreprocessorBrainMaGe(Preprocessor):
                 _modalities = {m+'_fpath':fp
                                for m, fp in modalities_at_template.items()}
 
-            (
-                t1_brain_fpath,
-                t2_brain_fpath,
-                t1ce_brain_fpath,
-                flair_brain_fpath,
-                brain_mask_fpath
-            ) = self._bet_multi_4(**_modalities)
+            brain_mask_fpath = self._bet_multi_4(**_modalities)
 
             modalities_brain = dict()
             ms = set(modalities.keys()).union(set(modalities_at_template.keys()))
             for m in ms:
-                modalities_brain[m] = eval(m+'_brain_fpath')
+                mod_fpath = _modalities[m+'_fpath']
+                modalities_brain[m] = apply_mask_match_brats(
+                    mod_fpath,
+                    brain_mask_fpath,
+                    os.path.join(self.tmpdir, 'brain_'),
+                )
 
             return modalities_brain, brain_mask_fpath
 
@@ -431,28 +448,7 @@ class PreprocessorBrainMaGe(Preprocessor):
 
         self.bet_cost_hist.append(f_time - s_time)
 
-        t1_brain_fpath = fsl_applymask(
-            t1_fpath,
-            brain_mask_fpath,
-            os.path.join(self.tmpdir, 'brain_')
-        )
-        t2_brain_fpath = fsl_applymask(
-            t2_fpath,
-            brain_mask_fpath,
-            os.path.join(self.tmpdir, 'brain_')
-        )
-        t1ce_brain_fpath = fsl_applymask(
-            t1ce_fpath,
-            brain_mask_fpath,
-            os.path.join(self.tmpdir, 'brain_')
-        )
-        flair_brain_fpath = fsl_applymask(
-            flair_fpath,
-            brain_mask_fpath,
-            os.path.join(self.tmpdir, 'brain_')
-        )
-
-        return t1_brain_fpath, t2_brain_fpath, t1ce_brain_fpath, flair_brain_fpath, brain_mask_fpath
+        return brain_mask_fpath
 
     def _bet(self, modality_fpath):
         brain_mask_fpath = os.path.join(
@@ -466,13 +462,7 @@ class PreprocessorBrainMaGe(Preprocessor):
 
         self.bet_cost_hist.append(f_time - s_time)
 
-        brain_fpath = fsl_applymask(
-            modality_fpath,
-            brain_mask_fpath,
-            os.path.join(self.tmpdir, 'brain_')
-        )
-
-        return brain_fpath, brain_mask_fpath
+        return brain_mask_fpath
 
 
 class PreprocessorOurBET(Preprocessor):
@@ -494,7 +484,7 @@ class PreprocessorOurBET(Preprocessor):
 
     def _bet(self, modality_fpath):
         s_time = time()
-        brain_fpath, brain_mask_fpath = our_bet(
+        _, brain_mask_fpath = our_bet(
             modality_fpath,
             os.path.join(self.tmpdir, 'brain_'),
             self.weights_fpath,
@@ -505,4 +495,4 @@ class PreprocessorOurBET(Preprocessor):
 
         self.bet_cost_hist.append(f_time - s_time)
 
-        return brain_fpath, brain_mask_fpath
+        return brain_mask_fpath
