@@ -71,6 +71,41 @@ def _bounding_box_from_overlay_data(overlay_data):
 
     return bb
 
+def plot_img_overlay(image, overlay=None, overlay_label=None, alpha=0.25, ax=None):
+    ol_colors = [(1, 0, 0, c) for c in np.linspace(0, 1, 100)]
+    ol_cmap = mcolors.LinearSegmentedColormap.from_list('ol_cmap', ol_colors, N=2)
+
+    image_ = _load_image_if_path(image)
+    if isinstance(image_, nib.Nifti1Image):
+        image_ = image_.get_fdata()
+
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot()
+
+    im = ax.imshow(image_[:,:,0], cmap='gray', vmin=image_.min(), vmax=image_.max())
+
+    im_pred = None
+    if overlay is not None:
+        overlay_ = _load_image_if_path(overlay)
+        if isinstance(overlay_, nib.Nifti1Image):
+            overlay_ = overlay_.get_fdata()
+
+        if overlay_label is not None:
+            overlay_ = (overlay_ >= overlay_label).astype(int)
+
+        im_pred = ax.imshow(overlay_[:,:,0], alpha=alpha, cmap=ol_cmap, vmin=0, vmax=1)
+
+    def update(layer):
+        im.set_data(image_[:,:,layer])
+        if im_pred is not None:
+            im_pred.set_data(overlay_[:,:,layer])
+        ax.figure.canvas.draw_idle()
+
+    if isinstance(image, str) or isinstance(image, Path):
+        ax.set_title(Path(image).name)
+
+    return update, ax
 
 def show_mri(image, overlay=None, overlay_label=None, pos=(0, 0, 0),
              plot_bounding_box=False, clipping=None, alpha=0.25):
