@@ -1,13 +1,17 @@
+import importlib
 import os
 import shutil
+import sys
 
 from pathlib import Path
 from warnings import warn
 
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 
+from joblib import Parallel, delayed
 from medpy.metric import hd95
 from nibabel.viewers import OrthoSlicer3D
 from nipype.interfaces.dcm2nii import Dcm2nii, Dcm2niix
@@ -141,7 +145,6 @@ def _hd_distance(p: np.ndarray, l: np.ndarray, c: float = None,
     return np.percentile(distances, 95)
 
 def hd_distance(p: np.ndarray, l: np.ndarray, c: float = None) -> np.ndarray:
-    """From https://github.com/SilmarilBearer/HausdorffLoss/"""
     if c is None:
         _p = (p > 0).astype(int)
         _l = (l > 0).astype(int)
@@ -204,36 +207,63 @@ def compute_foreground_dices(preds_fpaths, labels_fpaths):
 
     return f_dices
 
-def compute_all_dices(preds_fpaths, labels_fpaths):
+def compute_all_dices(preds_fpaths, labels_fpaths, n_jobs=-1):
     scores = [list() for _ in  range(3)]
 
-    for pred_fpath, label_fpath in zip(preds_fpaths, labels_fpaths):
+    if 'tqdm' in sys.modules:
+        tqdm_ = importlib.import_module('tqdm')
+        if 'tqdm.notebook' in sys.modules:
+            tqdm = tqdm_.notebook.tqdm
+        else:
+            tqdm = tqdm_.tqdm
+    else:
+        tqdm = lambda x: x
+
+    for pred_fpath, label_fpath in tqdm(list(zip(preds_fpaths, labels_fpaths))):
         pred = nib.load(pred_fpath).get_fdata()
         label = nib.load(label_fpath).get_fdata()
 
+        scores_ = list()
         for c in range(1,3+1):
-            scores[c-1].append(dice(pred, label, c))
+            scores_.append(delayed(dice)(pred, label, c))
+
+        scores_ = Parallel(n_jobs=n_jobs)(scores_)
+        for c in range(1,3+1):
+            scores[c-1].append(scores_[c-1])
 
     # transpose
     scores = list(map(tuple, zip(*scores)))
 
     return scores
 
-def compute_all_scores(preds_fpaths, labels_fpaths):
-    scores = {'Dice': None, 'HD95': None}
-    scores['Dice'] = [list() for _ in  range(3)]
-    scores['HD95'] = [list() for _ in  range(3)]
+def compute_all_scores(preds_fpaths, labels_fpaths, n_jobs=-1):
+    scores = {'Dice': list(), 'HD95': list()}
 
-    for pred_fpath, label_fpath in zip(preds_fpaths, labels_fpaths):
+    if 'tqdm' in sys.modules:
+        tqdm_ = importlib.import_module('tqdm')
+        if 'tqdm.notebook' in sys.modules:
+            tqdm = tqdm_.notebook.tqdm
+        else:
+            tqdm = tqdm_.tqdm
+    else:
+        tqdm = lambda x: x
+
+    for pred_fpath, label_fpath in tqdm(zip(preds_fpaths, labels_fpaths)):
         pred = nib.load(pred_fpath).get_fdata()
         label = nib.load(label_fpath).get_fdata()
 
+        dices = list()
+        hds = list()
         for c in range(1,3+1):
-            scores['Dice'][c-1].append(dice(pred, label, c))
-            scores['HD95'][c-1].append(hd_distance(pred, label, c))
+            dices.append(delayed(dice)(pred, label, c))
+            hds.append(delayed(hd_distance)(pred, label, c))
 
-    # transpose
-    scores = {k: list(map(tuple, zip(*v))) for k, v in scores.items()}
+        res = Parallel(n_jobs=n_jobs)(dices + hds)
+        dices = res[:3]
+        hds = res[3:]
+
+        scores['Dice'].append(dices)
+        scores['HD95'].append(hds)
 
     return scores
 
