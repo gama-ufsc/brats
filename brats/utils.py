@@ -107,7 +107,7 @@ def plot_img_overlay(image, overlay=None, overlay_label=None, alpha=0.25, ax=Non
 
     return update, ax
 
-def show_mri(image, overlay=None, overlay_label=None, pos=(0, 0, 0),
+def show_mri(image, overlay=None, overlay_label=None, pos=(-120, 120, 75),
              plot_bounding_box=False, clipping=None, alpha=0.25):
     ol_colors = [(1, 0, 0, c) for c in np.linspace(0, 1, 100)]
     ol_cmap = mcolors.LinearSegmentedColormap.from_list('ol_cmap', ol_colors, N=2)
