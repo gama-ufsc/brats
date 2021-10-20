@@ -496,3 +496,30 @@ class PreprocessorOurBET(Preprocessor):
         self.bet_cost_hist.append(f_time - s_time)
 
         return brain_mask_fpath
+
+
+class PreprocessorNoBET(Preprocessor):
+    """Preprocessing module of BraTS pipeline without brain extraction.
+
+    Just aligns the FLAIR and T1 modalities to a T1 template.
+    """
+    def _bet(self, modality_fpath):
+        s_time = time()
+        modality = nib.load(modality_fpath)
+
+        brain_mask_data = modality.get_fdata() != 0
+        brain_mask_data = brain_mask_data.astype('uint8')
+
+        brain_mask = nib.Nifti1Image(brain_mask_data, affine=modality.affine,
+                                     header = modality.header)
+        brain_mask.set_data_dtype('uint8')
+
+        brain_mask_fpath = os.path.join(self.tmpdir,
+                                        'brain_mask_'+Path(modality_fpath).name)
+        nib.save(brain_mask, brain_mask_fpath)
+
+        f_time = time()
+
+        self.bet_cost_hist.append(f_time - s_time)
+
+        return brain_mask_fpath
