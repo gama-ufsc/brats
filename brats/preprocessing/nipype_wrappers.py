@@ -4,6 +4,19 @@ from nipype.interfaces import ants, fsl
 from nipype.interfaces.freesurfer import WatershedSkullStrip, Normalize
 
 
+def ants_n4bfc(input_fpath, output_fpath, num_threads: int = -1):
+    n4 = ants.N4BiasFieldCorrection()
+
+    n4.inputs.input_image = str(input_fpath)
+    n4.inputs.copy_header = True
+    n4.inputs.save_bias = False
+    n4.inputs.num_threads = num_threads
+    n4.inputs.output_image = str(output_fpath)
+
+    res = n4.run()
+
+    return res.outputs.output_image
+
 def ants_registration(fixed_image_fpath, moving_image_fpath,
                       transformation_prefix: str, num_threads=-1) -> tuple:
     """Run ANTS registration to generate the alignment transformation.
@@ -115,7 +128,7 @@ def fsl_applymask(in_file_fpath, mask_file_fpath, out_prefix):
     elif str(in_file_fpath).endswith('.nii.gz'):
         apply.inputs.output_type = 'NIFTI_GZ'
 
-    apply.inputs.out_file = out_prefix + os.path.basename(in_file_fpath)
+    apply.inputs.out_file = str(out_prefix) + os.path.basename(in_file_fpath)
 
     res = apply.run()
 

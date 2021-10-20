@@ -14,7 +14,7 @@ from scipy.ndimage import binary_fill_holes as fill_holes
 from .bet import bet as our_bet
 from .hdbet_wrapper import hd_bet
 from .brainmage_wrapper import brainmage, brainmage_multi4
-from .nipype_wrappers import ants_registration, ants_transformation, fsl_bet, fsl_applymask, freesurfer_bet
+from .nipype_wrappers import ants_n4bfc, ants_registration, ants_transformation, fsl_bet, fsl_applymask, freesurfer_bet
 
 
 def apply_mask_match_brats(image_fpath: Union[str, Path],
@@ -49,7 +49,7 @@ class Preprocessor(ABC):
     Also performs brain extraction (BET defined by child).
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_modality='T1',
-                 bet_first=False, num_threads=-1, device='gpu'):
+                 bet_first=False, n4: str = None, num_threads=-1, device='gpu'):
         assert os.path.exists(template_fpath), (
             '`template` must be a valid path to the template image'
         )
@@ -60,6 +60,13 @@ class Preprocessor(ABC):
         self.bet_modality = bet_modality.lower()
 
         self.bet_first = bet_first
+
+        if isinstance(n4, str):
+            assert n4.lower() in ['before', 'after'], '`n4` should be either `before`, `after` or None'
+            n4 = n4.lower()
+        else:
+            assert n4 is None, '`n4` should be either `before`, `after` or None'
+        self.n4 = n4
 
         assert device.lower() in ['cpu', 'gpu'], 'Device not recognized'
         self.device = device.lower()
@@ -148,6 +155,16 @@ class Preprocessor(ABC):
 
         return brain_mask_fpath
 
+    @staticmethod
+    def fix_biasfield(modalities: Dict[str,str], tmpdir: str, num_threads=-1
+                     ) -> Dict[str,str]:
+        fixed_modalities = dict()
+        for mod, mod_fpath in modalities.items():
+            fixed_modalities[mod] = ants_n4bfc(mod_fpath, tmpdir/mod_fpath.name,
+                                               num_threads)
+
+        return fixed_modalities
+
     def bet(self, modalities, modalities_at_template, transforms
            ) -> Dict[str,str]:
         """Perform brain extraction given object parameters.
@@ -159,6 +176,10 @@ class Preprocessor(ABC):
             transforms: dict of the transforms for each modality from their
             original space to the template space (see `self.registration`).
         """
+        if self.n4 == 'before':
+            modalities = self.fix_biasfield(modalities, self.tmpdir,
+                                            self.num_threads)
+
         modalities_brain = dict()
         if self.bet_modality in modalities_at_template:
             if self.bet_first:
@@ -198,6 +219,10 @@ class Preprocessor(ABC):
         else:
             raise AttributeError(f'`{self.bet_modality}` is not a valid'
                                   ' reference for betting.')
+
+        if self.n4 == 'after':
+            modalities_brain = self.fix_biasfield(modalities_brain, self.tmpdir,
+                                                  self.num_threads)
 
         return modalities_brain, brain_mask_fpath
 
