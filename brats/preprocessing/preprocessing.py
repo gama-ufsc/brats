@@ -116,7 +116,7 @@ class Preprocessor(ABC):
                 wsr_transform_fpath, _ = ants_registration(
                     modalities['t1'],
                     mod_fpath,
-                    os.path.join(tmpdir, 'wsr_transform_'),
+                    os.path.join(tmpdir, mod + '_wsr_transform_'),
                     num_threads,
                 )
                 transforms[mod].append(wsr_transform_fpath)
@@ -304,13 +304,13 @@ class PreprocessorFreeSurfer(Preprocessor):
     extraction.
     """
     def __init__(self, template_fpath: str, tmpdir: str, fast_bet=True,
-                 bet_modality='T1', bet_first=False, num_threads=-1,
-                 device='cpu'):
+                 bet_modality='T1', bet_first=False, n4: str = None,
+                 num_threads=-1, device='cpu'):
         assert device.lower() == 'cpu', 'only cpu supported by FreeSurfer'
 
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
                          bet_first=bet_first, num_threads=num_threads,
-                         device=device)
+                         device=device, n4=n4)
 
         self.fast_bet = fast_bet
 
@@ -348,11 +348,11 @@ class PreprocessorFSL(Preprocessor):
     """
     def __init__(self, template_fpath: str, tmpdir: str, fast_bet=True,
                  bet_modality='T1', bet_first=False, num_threads=-1,
-                 device='cpu'):
+                 n4: str = None, device='cpu'):
         assert device.lower() == 'cpu', 'only cpu supported by FSL BET'
 
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
-                         bet_first=bet_first, num_threads=num_threads,
+                         bet_first=bet_first, n4=n4, num_threads=num_threads,
                          device=device)
 
         self.fast_bet = fast_bet
@@ -379,9 +379,10 @@ class PreprocessorHDBET(Preprocessor):
     extraction.
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_modality='FLAIR',
-                 bet_first=False, num_threads=-1, device='gpu', **hdbet_kwargs):
+                 bet_first=False, num_threads=-1, device='gpu', n4: str = None,
+                 **hdbet_kwargs):
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
-                         bet_first=bet_first, num_threads=num_threads,
+                         bet_first=bet_first, n4=n4, num_threads=num_threads,
                          device=device)
 
         self.hdbet_kwargs = hdbet_kwargs
@@ -412,10 +413,10 @@ class PreprocessorBrainMaGe(Preprocessor):
     extraction.
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_modality='T1',
-                 mode='ma', bet_first=False, num_threads=-1, device='gpu'):
+                 mode='ma', bet_first=False, n4: str = None, num_threads=-1, device='gpu'):
 
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
-                         bet_first=bet_first, num_threads=num_threads,
+                         bet_first=bet_first, n4=n4, num_threads=num_threads,
                          device=device)
 
         assert mode.lower() in ['ma', 'multi4'], f'{mode} is not supported (only `ma` or `multi4`)'
@@ -497,10 +498,10 @@ class PreprocessorOurBET(Preprocessor):
     extraction.
     """
     def __init__(self, template_fpath: str, weights_fpath: str, tmpdir: str,
-                 bet_modality='FLAIR', bet_first=False, num_threads=-1,
-                 device='gpu', postproc=False):
+                 bet_modality='FLAIR', bet_first=False, n4: str = None,
+                 num_threads=-1, device='gpu', postproc=False):
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
-                         bet_first=bet_first, num_threads=num_threads,
+                         bet_first=bet_first, n4=n4, num_threads=num_threads,
                          device=device)
 
         self.weights_fpath = weights_fpath
