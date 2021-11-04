@@ -18,7 +18,7 @@ def captk_brats_pipeline(t1ce_fpath: str, t1_fpath: str, t2_fpath: str,
                          flair_fpath: str, tmpdir: str, subject_id: str = None,
                          skullstripping=False, brats=False):
     if subject_id is None:
-        subject_id = Path(t1ce_fpath).name.split('.')[0]
+        subject_id = Path(t1ce_fpath).name.replace('.nii', '').replace('.gz', '').replace('.dcm', '')
 
     out_dir = Path(tmpdir)/subject_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -71,13 +71,15 @@ def captk_brats_pipeline(t1ce_fpath: str, t1_fpath: str, t2_fpath: str,
 
         return out
 
-def greedy_apply_transforms(moving_fpath: str, output_fpath: str, transforms_fpaths: List[str]):
+def greedy_apply_transforms(moving_fpath: str, output_fpath: str, transforms_fpaths: List[str], interpolation='LINEAR'):
     atlas_fpath = Path(os.environ['GREEDY_PATH'])/'../data/sri24/atlastImage.nii.gz'
+
+    transforms = [str(f) for f in transforms_fpaths]
 
     cmd = _greedy_cmd
     cmd += f" -d 3 -rf {str(atlas_fpath)} -ri LINEAR"
-    cmd += f" -rm {moving_fpath} {output_fpath}"
-    cmd += f" -r {' '.join(transforms_fpaths)}"
+    cmd += f" -ri {interpolation} -rm {moving_fpath} {output_fpath}"
+    cmd += f" -r {' '.join(transforms)}"
 
     try:
         _ = subprocess.run(cmd, shell=True, check=True)
