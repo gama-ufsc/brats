@@ -87,3 +87,18 @@ def greedy_apply_transforms(moving_fpath: str, output_fpath: str, transforms_fpa
         return False
     else:
         return output_fpath
+
+def greedy_registration(fixed_image_fpath: str, moving_image_fpath: str,
+                        out_mat_fpath: str):
+    cmd = _greedy_cmd
+    cmd += f" -d 3 -a -m NMI"
+    cmd += f" -i {fixed_image_fpath} {moving_image_fpath}"
+    cmd += f" -o {out_mat_fpath}"
+    cmd += f" -ia-image-centers -n 100x50x100 -dof 6"
+
+    try:
+        _ = subprocess.run(cmd, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        return False
+    else:
+        return out_mat_fpath
