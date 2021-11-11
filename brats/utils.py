@@ -283,7 +283,7 @@ def compute_all_scores(preds_fpaths, labels_fpaths, n_jobs=-1):
     else:
         tqdm = lambda x: x
 
-    for pred_fpath, label_fpath in tqdm(zip(preds_fpaths, labels_fpaths)):
+    for pred_fpath, label_fpath in tqdm(list(zip(preds_fpaths, labels_fpaths))):
         pred = nib.load(pred_fpath).get_fdata()
         label = nib.load(label_fpath).get_fdata()
 
