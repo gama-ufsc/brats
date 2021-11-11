@@ -11,6 +11,8 @@ import numpy as np
 
 from scipy.ndimage import binary_fill_holes as fill_holes
 
+from brats.preprocessing.captk_wrappers import captk_brats_pipeline, greedy_apply_transforms
+
 from .bet import bet as our_bet
 from .hdbet_wrapper import hd_bet
 from .brainmage_wrapper import brainmage, brainmage_multi4
@@ -49,7 +51,8 @@ class Preprocessor(ABC):
     Also performs brain extraction (BET defined by child).
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_modality='T1',
-                 bet_first=False, n4: str = None, num_threads=-1, device='gpu'):
+                 bet_first=False, n4: str = None, num_threads=-1, device='gpu',
+                 registration='ants'):
         assert os.path.exists(template_fpath), (
             '`template` must be a valid path to the template image'
         )
@@ -78,11 +81,79 @@ class Preprocessor(ABC):
         os.makedirs(tmpdir, exist_ok=True)
         self.tmpdir = tmpdir
 
-    @staticmethod
-    def registration(modalities: Dict[str,str], template_fpath: str,
+        # define registration
+        if registration.lower() == 'ants':
+            self.registration = self.register_with_ants
+            self.transformation = self.transform_with_ants
+        elif registration.lower() == 'captk':
+            self.registration = self.register_with_captk
+            self.transformation = self.transform_with_captk
+
+    def registration(self, modalities: Dict[str,str], template_fpath: str,
                      tmpdir: str, num_threads=-1) -> Tuple[Dict[str,str],
                                                            Dict[str,List[str]]]:
         """Register modalities to template using T1 as reference.
+
+        Args:
+            modalities: dict containing the fpath of each modality to be
+            registered.
+
+        Returns:
+            modalities_at_template: similar to `modalities`, but with them at
+            the template's space.
+            transforms: dict containing the transforms of each modality from
+            their original space to the template space.
+        """
+        # OVERWRITTEN AT INSTANTIATION
+        # serves only as a reference
+
+    @staticmethod
+    def register_with_captk(modalities: Dict[str,str], template_fpath: str,
+                            tmpdir: str, num_threads=-1) -> Tuple[
+                                Dict[str,str],
+                                Dict[str,List[str]]
+                            ]:
+        """Registration using CaPTk's BraTS pipeline.
+
+        Args:
+            modalities: dict containing the fpath of each modality to be
+            registered.
+
+        Returns:
+            modalities_at_template: similar to `modalities`, but with them at
+            the template's space.
+            transforms: dict containing the transforms of each modality from
+            their original space to the template space.
+        """
+        out = captk_brats_pipeline(
+            t1ce_fpath=modalities['t1ce'],
+            t1_fpath=modalities['t1'],
+            t2_fpath=modalities['t2'],
+            flair_fpath=modalities['flair'],
+            tmpdir=tmpdir,
+            subject_id=None,
+            skullstripping=False,
+            brats=False,
+        )
+
+        modalities_at_template = out['images']
+
+        transforms = dict()
+        for mod in out['transfs'].keys():
+            if mod == 't1ce':  # t1ce is used a reference for this pipeline
+                transforms[mod] = [out['transfs'][mod]]
+            else:
+                transforms[mod] = [out['transfs']['t1ce'], out['transfs'][mod]]
+
+        return modalities_at_template, transforms
+
+    @staticmethod
+    def register_with_ants(modalities: Dict[str,str], template_fpath: str,
+                           tmpdir: str, num_threads=-1) -> Tuple[
+                               Dict[str,str],
+                               Dict[str,List[str]]
+                           ]:
+        """Registration using ants.
 
         Args:
             modalities: dict containing the fpath of each modality to be
@@ -132,6 +203,82 @@ class Preprocessor(ABC):
 
         return modalities_at_template, transforms
 
+    def transformation(self, input_image_fpath: str, ref_image_fpath: str,
+                       transforms_fpaths: List[str], output_prefix: str,
+                       num_threads=-1, interpolation='Linear', reverse=False) -> str:
+        """Transform image and inpterpolate.
+
+        Args:
+            input_image_fpath: path to image to be transformed.
+            ref_image_fpath: path to image at the destination's space.
+            transforms_fpaths: list of (paths to the) transformations to be
+            applied (in reverse order, naturally).
+            output_prefix: prefix of the transformed image.
+
+        Returns:
+            output_image_fpath: (path to the) transformed image.
+        """
+        # OVERWRITTEN AT INSTANTIATION
+        # serves only as a reference
+
+    def transform_with_captk(self, input_image_fpath, ref_image_fpath,
+                             transforms_fpaths, output_prefix: str,
+                             num_threads=-1, interpolation='Linear',
+                             reverse=False) -> str:
+        """Transform image and inpterpolate using CaPTk (greedy).
+
+        Args:
+            input_image_fpath: path to image to be transformed.
+            ref_image_fpath: path to image at the destination's space.
+            transforms_fpaths: list of (paths to the) transformations to be
+            applied (in reverse order, naturally).
+            output_prefix: prefix of the transformed image.
+
+        Returns:
+            output_image_fpath: (path to the) transformed image.
+        """
+        if reverse:
+            raise NotImplementedError('reverse transform not possible with greedy')
+        output_image_fpath = Path(output_prefix)
+        output_image_fpath = str(output_image_fpath.parent/(
+            output_image_fpath.name + input_image_fpath.name
+        ))
+        if interpolation == 'Linear':
+            _interpolation = 'LINEAR'
+        elif interpolation == 'NearestNeighbor':
+            _interpolation = 'NN'
+        else:
+            raise NotImplementedError('only Linear and NearestNeighbor supported')
+
+        return greedy_apply_transforms(input_image_fpath, output_image_fpath,
+                                       transforms_fpaths, _interpolation)
+    
+    def transform_with_ants(self, input_image_fpath, ref_image_fpath,
+                            transforms_fpaths, output_prefix: str,
+                            num_threads=-1, interpolation='Linear',
+                            reverse=False) -> str:
+        """Transform image and inpterpolate using ANTs.
+
+        Args:
+            input_image_fpath: path to image to be transformed.
+            ref_image_fpath: path to image at the destination's space.
+            transforms_fpaths: list of (paths to the) transformations to be
+            applied (in reverse order, naturally).
+            output_prefix: prefix of the transformed image.
+
+        Returns:
+            output_image_fpath: (path to the) transformed image.
+        """
+        return ants_transformation(
+            input_image_fpath=input_image_fpath,
+            ref_image_fpath=ref_image_fpath,
+            transforms_fpaths=transforms_fpaths,
+            output_prefix=output_prefix,
+            num_threads=num_threads,
+            interpolation=interpolation,
+            reverse=reverse,
+        )
+
     @abstractmethod
     def _bet(self, modality_fpath) -> str:
         """ BETs `modality_fpath`, returning brain image and mask.
@@ -145,7 +292,7 @@ class Preprocessor(ABC):
         raw_brain_mask_fpath = self._bet(src_fpath)
 
         # transform mask to template space
-        brain_mask_fpath = ants_transformation(
+        brain_mask_fpath = self.transformation(
             raw_brain_mask_fpath,
             self.template_fpath,
             transforms,
@@ -284,7 +431,7 @@ class Preprocessor(ABC):
         )
 
         # transforms using ants operation
-        transformed_pred_image = ants_transformation(
+        transformed_pred_image = self.transformation(
             pred.get_filename(),
             original_image,
             transforms,
@@ -304,13 +451,10 @@ class PreprocessorFreeSurfer(Preprocessor):
     extraction.
     """
     def __init__(self, template_fpath: str, tmpdir: str, fast_bet=True,
-                 bet_modality='T1', bet_first=False, n4: str = None,
-                 num_threads=-1, device='cpu'):
+                 device='cpu', **kwargs):
         assert device.lower() == 'cpu', 'only cpu supported by FreeSurfer'
 
-        super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
-                         bet_first=bet_first, num_threads=num_threads,
-                         device=device, n4=n4)
+        super().__init__(template_fpath, tmpdir, device=device, **kwargs)
 
         self.fast_bet = fast_bet
 
@@ -380,10 +524,10 @@ class PreprocessorHDBET(Preprocessor):
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_modality='FLAIR',
                  bet_first=False, num_threads=-1, device='gpu', n4: str = None,
-                 **hdbet_kwargs):
+                 registration='ants', **hdbet_kwargs):
         super().__init__(template_fpath, tmpdir, bet_modality=bet_modality,
                          bet_first=bet_first, n4=n4, num_threads=num_threads,
-                         device=device)
+                         device=device, registration=registration)
 
         self.hdbet_kwargs = hdbet_kwargs
 
