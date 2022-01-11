@@ -102,3 +102,19 @@ def greedy_registration(fixed_image_fpath: str, moving_image_fpath: str,
         return False
     else:
         return out_mat_fpath
+
+def captk_deepmedic(in_fpaths: List[str], out_dir: str,
+                    deepmedic_model='skullStripping_modalityAgnostic'):
+    model_fpath = Path(os.environ['DEEPMEDIC_PATH'])/'saved_models'/deepmedic_model
+    cmd = _captk_cmd + ' DeepMedic'
+
+    cmd += f" -i {','.join([str(f) for f in in_fpaths])}"
+    cmd += f" -o {out_dir}"
+    cmd += f" -md {model_fpath}"
+
+    try:
+        _ = subprocess.run(cmd, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        return False
+    else:
+        return Path(out_dir)/'predictions/testApiSession/predictions/Segm.nii.gz'

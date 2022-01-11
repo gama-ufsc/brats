@@ -1,21 +1,20 @@
-from abc import ABC, abstractmethod
-from logging import warn
-from time import time
 import os
 
-from typing import List, Tuple, Dict, Union
+from abc import ABC, abstractmethod
+from logging import warn
 from pathlib import Path
+from time import time
+from typing import List, Tuple, Dict, Union
 
 import nibabel as nib
 import numpy as np
 
 from scipy.ndimage import binary_fill_holes as fill_holes
 
-from brats.preprocessing.captk_wrappers import captk_brats_pipeline, greedy_apply_transforms
-
 from .bet import bet as our_bet
-from .hdbet_wrapper import hd_bet
 from .brainmage_wrapper import brainmage, brainmage_multi4
+from .captk_wrappers import captk_brats_pipeline, greedy_apply_transforms, captk_deepmedic
+from .hdbet_wrapper import hd_bet
 from .nipype_wrappers import ants_n4bfc, ants_registration, ants_transformation, fsl_bet, fsl_applymask, freesurfer_bet
 
 
@@ -51,8 +50,8 @@ class Preprocessor(ABC):
     Also performs brain extraction (BET defined by child).
     """
     def __init__(self, template_fpath: str, tmpdir: str, bet_modality='T1',
-                 bet_first=False, n4: str = None, num_threads=-1, device='gpu',
-                 registration='ants'):
+                 bet_first=False, n4: str = None, registration_modality='T1',
+                 num_threads=-1, device='gpu', registration='ants'):
         assert os.path.exists(template_fpath), (
             '`template` must be a valid path to the template image'
         )
@@ -61,6 +60,8 @@ class Preprocessor(ABC):
         self.num_threads = num_threads
 
         self.bet_modality = bet_modality.lower()
+
+        self.registration_modality = registration_modality.lower()
 
         self.bet_first = bet_first
 
@@ -86,12 +87,13 @@ class Preprocessor(ABC):
             self.registration = self.register_with_ants
             self.transformation = self.transform_with_ants
         elif registration.lower() == 'captk':
+            if registration_modality.lower() != 't1ce':
+                warn('CaPTk uses T1CE as the reference modality, `registration_modality` will be ignored')
             self.registration = self.register_with_captk
             self.transformation = self.transform_with_captk
 
-    def registration(self, modalities: Dict[str,str], template_fpath: str,
-                     tmpdir: str, num_threads=-1) -> Tuple[Dict[str,str],
-                                                           Dict[str,List[str]]]:
+    def registration(self, modalities: Dict[str,str], num_threads=-1
+                    ) -> Tuple[Dict[str,str], Dict[str,List[str]]]:
         """Register modalities to template using T1 as reference.
 
         Args:
@@ -107,12 +109,11 @@ class Preprocessor(ABC):
         # OVERWRITTEN AT INSTANTIATION
         # serves only as a reference
 
-    @staticmethod
-    def register_with_captk(modalities: Dict[str,str], template_fpath: str,
-                            tmpdir: str, num_threads=-1) -> Tuple[
+    def register_with_captk(self, modalities: Dict[str,str], num_threads=-1
+                           ) -> Tuple[
                                 Dict[str,str],
                                 Dict[str,List[str]]
-                            ]:
+                           ]:
         """Registration using CaPTk's BraTS pipeline.
 
         Args:
@@ -130,7 +131,7 @@ class Preprocessor(ABC):
             t1_fpath=modalities['t1'],
             t2_fpath=modalities['t2'],
             flair_fpath=modalities['flair'],
-            tmpdir=tmpdir,
+            tmpdir=self.tmpdir,
             subject_id=None,
             skullstripping=False,
             brats=False,
@@ -147,12 +148,11 @@ class Preprocessor(ABC):
 
         return modalities_at_template, transforms
 
-    @staticmethod
-    def register_with_ants(modalities: Dict[str,str], template_fpath: str,
-                           tmpdir: str, num_threads=-1) -> Tuple[
-                               Dict[str,str],
-                               Dict[str,List[str]]
-                           ]:
+    def register_with_ants(self, modalities: Dict[str,str], num_threads=-1
+                          ) -> Tuple[
+                              Dict[str,str],
+                              Dict[str,List[str]]
+                          ]:
         """Registration using ants.
 
         Args:
@@ -173,9 +173,9 @@ class Preprocessor(ABC):
 
         # t1 (subject) to template registration
         str_transform_fpath, _ = ants_registration(
-            template_fpath,
+            self.template_fpath,
             modalities['t1'],
-            os.path.join(tmpdir, 'str_transform_'),
+            os.path.join(self.tmpdir, 'str_transform_'),
             num_threads,
         )
 
@@ -187,7 +187,7 @@ class Preprocessor(ABC):
                 wsr_transform_fpath, _ = ants_registration(
                     modalities['t1'],
                     mod_fpath,
-                    os.path.join(tmpdir, mod + '_wsr_transform_'),
+                    os.path.join(self.tmpdir, mod + '_wsr_transform_'),
                     num_threads,
                 )
                 transforms[mod].append(wsr_transform_fpath)
@@ -195,9 +195,9 @@ class Preprocessor(ABC):
             # apply transformations
             modalities_at_template[mod] = ants_transformation(
                 mod_fpath,
-                template_fpath,
+                self.template_fpath,
                 transforms[mod],
-                os.path.join(tmpdir, mod+'_template_'),
+                os.path.join(self.tmpdir, mod+'_template_'),
                 num_threads,
             )
 
@@ -402,8 +402,6 @@ class Preprocessor(ABC):
 
         modalities_at_template, transforms = self.registration(
             modalities,
-            self.template_fpath,
-            self.tmpdir,
             self.num_threads,
         )
 
@@ -688,6 +686,43 @@ class PreprocessorNoBET(Preprocessor):
                                         'brain_mask_'+Path(modality_fpath).name)
         nib.save(brain_mask, brain_mask_fpath)
 
+        f_time = time()
+
+        self.bet_cost_hist.append(f_time - s_time)
+
+        return brain_mask_fpath
+
+
+class PreprocessorDeepMedic(PreprocessorBrainMaGe):
+    """Preprocessing module of BraTS pipeline using DeepMedic (through CaPTk).
+
+    Aligns the FLAIR and T1 modalities to a T1 template. Also performs brain
+    extraction.
+    """
+    def _bet_multi_4(self, t1_fpath, t2_fpath, t1ce_fpath, flair_fpath):
+        out_dir = Path(self.tmpdir)/'deepmedic_out'
+
+        s_time = time()
+        brain_mask_fpath = captk_deepmedic(
+            [t1_fpath, t1ce_fpath, t2_fpath, flair_fpath],
+            out_dir,
+            deepmedic_model='skullStripping'
+        )
+        f_time = time()
+
+        self.bet_cost_hist.append(f_time - s_time)
+
+        return brain_mask_fpath
+
+    def _bet(self, modality_fpath):
+        out_dir = Path(self.tmpdir)/'deepmedic_out'
+
+        s_time = time()
+        brain_mask_fpath = captk_deepmedic(
+            [modality_fpath],
+            out_dir,
+            deepmedic_model='skullStripping_modalityAgnostic'
+        )
         f_time = time()
 
         self.bet_cost_hist.append(f_time - s_time)
