@@ -1,7 +1,9 @@
 import os
-from typing import Dict
 
 import nibabel as nib
+
+from pathlib import Path
+from typing import Dict, Union
 
 from nipype.interfaces import ants
 
@@ -130,7 +132,7 @@ class WithinSubjectRegistrationStep(Step):
                         image.get_filename(),
                         modalities[self.reference_modality].get_filename(),
                         [wsr_transform_fpath],
-                        str(self.tmpdir/f"{mod}_template_"),
+                        str(self.tmpdir/f"{mod}_at_{self.reference_modality}_"),
                         self.num_threads,
                     )
                     transf_modalities[mod] = nib.load(transf_image_fpath)
@@ -139,6 +141,71 @@ class WithinSubjectRegistrationStep(Step):
                     # as the reference modality is already in the target space,
                     # no transformation is required
                     transf_modalities[mod] = image
+
+        if self.apply:
+            context['modalities'].append(transf_modalities)
+
+        return context
+
+class TemplateRegistrationStep(Step):
+    """Register the reference modality to a template using ANTs.
+
+    Registers one of the modalities to the template. They should be the same
+    MRI modality unless you know what you are doing. Optionally, apply the
+    generated transformation to the modalities.
+
+    Attributes:
+        reference_modality: modality to register to the template.
+        template: modality of the template to be registered to.
+        apply: if True, applies the generated transformation to the modalities.
+        num_threads: number of threads used by ANTs (see
+        nipype.interfaces.ants.Registration).
+    """
+    def __init__(self, reference_modality: str,
+        template: Union[str, nib.Nifti1Image], apply=False, num_threads=-1,
+        tmpdir=None) -> None:
+        super().__init__(tmpdir=tmpdir)
+
+        self.reference_modality = reference_modality.lower()
+
+        if isinstance(template, nib.Nifti1Image):
+            self.template = template
+        else:
+            self.template = nib.load(template)
+
+        self.apply = apply
+
+        self.num_threads = num_threads
+
+    def run(self, context: Dict) -> Dict:
+        """Context must contain at lest the reference modality.
+        """
+        modalities = context['modalities'][-1]
+
+        if self.apply:
+            transf_modalities = dict()
+            template_name = Path(self.template.get_filename()).name.split('.')[0]
+
+        # generate transformation
+        str_transform_fpath, _ = ants_registration(
+            self.template.get_filename(),
+            modalities[self.reference_modality].get_filename(),
+            str(self.tmpdir/f"str_transform_"),
+            self.num_threads,
+        )
+
+        for mod, image in modalities.items():
+            context['transforms'][mod].append(str_transform_fpath)
+            if self.apply:
+                # apply transformation to the modality
+                transf_image_fpath = ants_transformation(
+                    image.get_filename(),
+                    self.template.get_filename(),
+                    [str_transform_fpath],
+                    str(self.tmpdir/f"{mod}_at_{template_name}_"),
+                    self.num_threads,
+                )
+                transf_modalities[mod] = nib.load(transf_image_fpath)
 
         if self.apply:
             context['modalities'].append(transf_modalities)
