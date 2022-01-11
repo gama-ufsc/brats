@@ -1,17 +1,27 @@
 import os
 import subprocess
 
+import nibabel as nib
+
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from dotenv import find_dotenv, load_dotenv
+
+from .base import Step
 
 # find .env automagically by walking up directories until it's found, then
 # load up the .env entries as environment variables
 load_dotenv(find_dotenv())
 
-_captk_cmd = str(Path(os.environ['CAPTK_PATH'])/'captk')
-_greedy_cmd = str(Path(os.environ['GREEDY_PATH'])/'greedy')
+try:
+    _captk_cmd = str(Path(os.environ['CAPTK_PATH'])/'captk')
+    _greedy_cmd = str(Path(os.environ['GREEDY_PATH'])/'greedy')
+except KeyError:
+    raise EnvironmentError(
+        'Please be sure that `CAPTK_PATH` and `GREEDY_PATH` are set to the '
+        'folders that contain the executables.'
+    )
 
 
 def captk_brats_pipeline(t1ce_fpath: str, t1_fpath: str, t2_fpath: str,
@@ -118,3 +128,36 @@ def captk_deepmedic(in_fpaths: List[str], out_dir: str,
         return False
     else:
         return Path(out_dir)/'predictions/testApiSession/predictions/Segm.nii.gz'
+
+class BraTSRegistrationStep(Step):
+    """Register images following the BraTS pipeline implemented in CaPTk.
+
+    Input MUST contain t1, t2, t1ce and flair modalities.
+    """
+    def __init__(self, tmpdir=None) -> None:
+        super().__init__(tmpdir=tmpdir)
+
+    def run(self, context: Dict) -> Dict:
+        modalities = context['modalities'][-1]
+
+        out = captk_brats_pipeline(
+            t1ce_fpath=modalities['t1ce'].get_filename(),
+            t1_fpath=modalities['t1'].get_filename(),
+            t2_fpath=modalities['t2'].get_filename(),
+            flair_fpath=modalities['flair'].get_filename(),
+            tmpdir=self.tmpdir,
+            subject_id=None,
+            skullstripping=False,
+            brats=False,
+        )
+
+        context['modalities'].append({
+            mod: nib.load(img_fpath) for mod, img_fpath in out['images'].items()
+        })
+
+        for mod in out['transfs'].keys():
+            context['transforms'][mod].append(out['transfs']['t1ce'])
+            if mod != 't1ce':  # t1ce is used a reference for this pipeline
+                context['transforms'][mod].append(out['transfs'][mod])
+
+        return context
