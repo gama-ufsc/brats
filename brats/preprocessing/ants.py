@@ -7,7 +7,7 @@ from typing import Dict, Union
 
 from nipype.interfaces import ants
 
-from .registration import RegistrationStep
+from .registration import Registration
 
 
 def ants_n4bfc(input_fpath, output_fpath, num_threads: int = -1):
@@ -85,7 +85,7 @@ def ants_transformation(input_image_fpath, ref_image_fpath, transforms_fpaths,
 
     return res.outputs.output_image
 
-class ANTsRegistrationStep(RegistrationStep):
+class ANTsRegistration(Registration):
     """Register the reference modality to another image using ANTs.
 
     Registers one of the modalities to the provided image (can be a template).
@@ -129,7 +129,7 @@ class ANTsRegistrationStep(RegistrationStep):
 
         return nib.load(transf_image_fpath)
 
-class ANTsWithinSubjectRegistrationStep(ANTsRegistrationStep):
+class ANTsWithinSubjectRegistration(ANTsRegistration):
     """Register multiple modalities into the space of one of them using ANTs.
 
     Effectively, the resulting modalities are all aligned to the modality taken

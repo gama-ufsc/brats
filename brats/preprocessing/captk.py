@@ -96,7 +96,7 @@ def captk_deepmedic(in_fpaths: List[str], out_dir: str,
     else:
         return Path(out_dir)/'predictions/testApiSession/predictions/Segm.nii.gz'
 
-class BraTSRegistrationStep(Step):
+class BraTSRegistration(Step):
     """Register images following the BraTS pipeline implemented in CaPTk.
 
     Input MUST contain t1, t2, t1ce and flair modalities.

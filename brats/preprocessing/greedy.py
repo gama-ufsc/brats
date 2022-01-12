@@ -8,7 +8,7 @@ import nibabel as nib
 
 from dotenv import find_dotenv, load_dotenv
 
-from .registration import RegistrationStep
+from .registration import Registration
 
 # find .env automagically by walking up directories until it's found, then
 # load up the .env entries as environment variables
@@ -56,7 +56,7 @@ def greedy_registration(fixed_image_fpath: str, moving_image_fpath: str,
     else:
         return out_mat_fpath
 
-class GreedyRegistrationStep(RegistrationStep):
+class GreedyRegistration(Registration):
     """Register the reference modality to another image using greedy.
 
     Registers one of the modalities to the provided image (can be a template).

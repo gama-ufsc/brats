@@ -7,7 +7,7 @@ import nibabel as nib
 from brats.preprocessing.base import Step
 
 
-class RegistrationStep(Step,ABC):
+class Registration(Step,ABC):
     """Register the reference modality to another image using ANTs.
 
     Registers one of the modalities to the provided image (can be a template).
