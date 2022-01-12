@@ -71,14 +71,15 @@ class GreedyRegistration(Registration):
         target: modality of the target image to be registered to.
         apply: if True, applies the generated transformation to the modalities.
     """
-    def _register(self, modality: nib.Nifti1Image):
+    def _register(self, modality: nib.Nifti1Image) -> str:
         return greedy_registration(
             self.target.get_filename(),
             modality.get_filename(),
             str(self.tmpdir/f"str_transform.mat"),
         )
 
-    def _apply(self, modality: nib.Nifti1Image, transform_fpath: str):
+    def _apply(self, modality: nib.Nifti1Image, transform_fpath: str
+        ) -> nib.Nifti1Image:
         target_name = Path(self.target.get_filename()).name.split('.')[0]
         mod_name = Path(modality.get_filename()).name.split('.')[0]
 

@@ -106,7 +106,7 @@ class ANTsRegistration(Registration):
 
         self.num_threads = num_threads
 
-    def _register(self, modality: nib.Nifti1Image):
+    def _register(self, modality: nib.Nifti1Image) -> str:
         transform_fpath, _ = ants_registration(
             self.target.get_filename(),
             modality.get_filename(),
@@ -116,7 +116,8 @@ class ANTsRegistration(Registration):
 
         return transform_fpath
 
-    def _apply(self, modality: nib.Nifti1Image, transform_fpath: str):
+    def _apply(self, modality: nib.Nifti1Image, transform_fpath: str
+        ) -> nib.Nifti1Image:
         target_name = Path(self.target.get_filename()).name.split('.')[0]
 
         transf_image_fpath = ants_transformation(

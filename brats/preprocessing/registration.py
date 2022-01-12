@@ -36,7 +36,7 @@ class Registration(Step,ABC):
         self.apply = apply
 
     @abstractmethod
-    def _register(self, modality: nib.Nifti1Image):
+    def _register(self, modality: nib.Nifti1Image) -> str:
         """Wrapper that registers `modality` to target and returns the transform.
 
         Args:
@@ -49,7 +49,8 @@ class Registration(Step,ABC):
         """
 
     @abstractmethod
-    def _apply(self, modality: nib.Nifti1Image, transform_fpath: str):
+    def _apply(self, modality: nib.Nifti1Image, transform_fpath: str
+        ) -> nib.Nifti1Image:
         """Wrapper that transforms `modality` to target space.
 
         Args:
