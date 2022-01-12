@@ -24,13 +24,16 @@ except KeyError:
 
 
 def greedy_apply_transforms(moving_fpath: str, output_fpath: str,
-    transforms_fpaths: List[str], interpolation='LINEAR'):
-    atlas_fpath = Path(os.environ['GREEDY_PATH'])/'../data/sri24/atlastImage.nii.gz'
+    transforms_fpaths: List[str], fixed_fpath=None, interpolation='LINEAR'):
+    if fixed_fpath is None:
+        fixed_fpath = Path(os.environ['GREEDY_PATH'])/'../data/sri24/atlastImage.nii.gz'
+    else:
+        fixed_fpath = Path(fixed_fpath)
 
     transforms = [str(f) for f in transforms_fpaths]
 
     cmd = _greedy_cmd
-    cmd += f" -d 3 -rf {str(atlas_fpath)} -ri LINEAR"
+    cmd += f" -d 3 -rf {str(fixed_fpath)} -ri LINEAR"
     cmd += f" -ri {interpolation} -rm {moving_fpath} {output_fpath}"
     cmd += f" -r {' '.join(transforms)}"
 
@@ -82,7 +85,8 @@ class GreedyRegistration(Registration):
         transf_image_fpath = greedy_apply_transforms(
             modality.get_filename(),
             str(self.tmpdir/f"{mod_name}_at_{target_name}.nii.gz"),
-            [transform_fpath],
+            [transform_fpath,],
+            fixed_fpath=self.target.get_filename(),
         )
 
         return nib.load(transf_image_fpath)
