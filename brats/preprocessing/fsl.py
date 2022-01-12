@@ -8,6 +8,8 @@ import nibabel as nib
 from nipype.interfaces.fsl.utils import Reorient2Std
 from nipype.interfaces import fsl
 
+from brats.preprocessing.brainx import BrainExtraction
+
 from .base import Step
 
 
@@ -88,15 +90,12 @@ class StdReorientation(Step):
 
         return context
 
-class BET(Step):
+class BET(BrainExtraction):
     """Apply FSL's BET on all modalities.
     """
-    def __init__(self, bet_modality: str, fast=True, apply=True, tmpdir=None) -> None:
-        super().__init__(tmpdir=tmpdir)
-
-        self.bet_modality = bet_modality.lower()
-
-        self.apply = apply
+    def __init__(self, bet_modality: str, fast=True, apply=True, tmpdir=None
+        ) -> None:
+        super().__init__(bet_modality, apply=apply, tmpdir=tmpdir)
 
         self.fast = fast
 
@@ -120,19 +119,3 @@ class BET(Step):
         )
 
         return nib.load(brain_modality_fpath)
-
-    def run(self, context: Dict) -> Dict:
-        modalities = context['modalities'][-1]
-
-        brain_mask = self._bet(modalities[self.bet_modality])
-
-        context['brain_mask'] = brain_mask
-
-        if self.apply:
-            brain_modalities = dict()
-            for mod, image in modalities.items():
-                brain_modalities[mod] = self._apply(image, brain_mask)
-
-            context['modalities'].append(brain_modalities)
-
-        return context
