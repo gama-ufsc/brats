@@ -65,7 +65,11 @@ class Pipeline():
 
         self.steps = list()
         for step in steps:
-            step.tmpdir = self.tmpdir
+            try:
+                step.tmpdir
+            except AttributeError:
+                # so it doesn't overwrite user-defined tmpdir
+                step.tmpdir = self.tmpdir
             self.steps.append(step)
 
     def run(self, modalities: Dict[str, Union[str, nib.Nifti1Image]],
