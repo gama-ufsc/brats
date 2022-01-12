@@ -16,11 +16,10 @@ load_dotenv(find_dotenv())
 
 try:
     _captk_cmd = str(Path(os.environ['CAPTK_PATH'])/'captk')
-    _greedy_cmd = str(Path(os.environ['GREEDY_PATH'])/'greedy')
 except KeyError:
     raise EnvironmentError(
-        'Please be sure that `CAPTK_PATH` and `GREEDY_PATH` are set to the '
-        'folders that contain the executables.'
+        'Please be sure that `CAPTK_PATH` is set to the '
+        'folder that contain the executable.'
     )
 
 
@@ -80,38 +79,6 @@ def captk_brats_pipeline(t1ce_fpath: str, t1_fpath: str, t2_fpath: str,
             raise NotImplementedError
 
         return out
-
-def greedy_apply_transforms(moving_fpath: str, output_fpath: str, transforms_fpaths: List[str], interpolation='LINEAR'):
-    atlas_fpath = Path(os.environ['GREEDY_PATH'])/'../data/sri24/atlastImage.nii.gz'
-
-    transforms = [str(f) for f in transforms_fpaths]
-
-    cmd = _greedy_cmd
-    cmd += f" -d 3 -rf {str(atlas_fpath)} -ri LINEAR"
-    cmd += f" -ri {interpolation} -rm {moving_fpath} {output_fpath}"
-    cmd += f" -r {' '.join(transforms)}"
-
-    try:
-        _ = subprocess.run(cmd, shell=True, check=True)
-    except subprocess.CalledProcessError as e:
-        return False
-    else:
-        return output_fpath
-
-def greedy_registration(fixed_image_fpath: str, moving_image_fpath: str,
-                        out_mat_fpath: str):
-    cmd = _greedy_cmd
-    cmd += f" -d 3 -a -m NMI"
-    cmd += f" -i {fixed_image_fpath} {moving_image_fpath}"
-    cmd += f" -o {out_mat_fpath}"
-    cmd += f" -ia-image-centers -n 100x50x100 -dof 6"
-
-    try:
-        _ = subprocess.run(cmd, shell=True, check=True)
-    except subprocess.CalledProcessError as e:
-        return False
-    else:
-        return out_mat_fpath
 
 def captk_deepmedic(in_fpaths: List[str], out_dir: str,
                     deepmedic_model='skullStripping_modalityAgnostic'):
