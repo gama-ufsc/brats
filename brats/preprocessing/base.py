@@ -67,9 +67,10 @@ class Pipeline():
         for step in steps:
             try:
                 step.tmpdir
-            except AttributeError:
                 # so it doesn't overwrite user-defined tmpdir
-                step.tmpdir = self.tmpdir
+            except AttributeError:
+                # avoids one step overwriting the files of an previous
+                step.tmpdir = self.tmpdir/type(step).__name__
             self.steps.append(step)
 
     def run(self, modalities: Dict[str, Union[str, nib.Nifti1Image]],
