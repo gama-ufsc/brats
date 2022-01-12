@@ -76,7 +76,8 @@ class StdReorientation(Step):
 
         out_modalities = dict()
         for mod, image in modalities.items():
-            mod_name = Path(image.get_filename()).name
+            mod_name = Path(image.get_filename()).name.replace('.nii', '') \
+                                                      .replace('.gz', '')
 
             reor = Reorient2Std()
             reor.inputs.in_file = image.get_filename()

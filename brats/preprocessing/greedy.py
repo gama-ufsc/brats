@@ -81,7 +81,8 @@ class GreedyRegistration(Registration):
     def _apply(self, modality: nib.Nifti1Image, transform_fpath: str
         ) -> nib.Nifti1Image:
         target_name = Path(self.target.get_filename()).name.split('.')[0]
-        mod_name = Path(modality.get_filename()).name.split('.')[0]
+        mod_name = Path(modality.get_filename()).name.replace('.nii', '') \
+                                                     .replace('.gz', '')
 
         transf_image_fpath = greedy_apply_transforms(
             modality.get_filename(),
