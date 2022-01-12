@@ -71,6 +71,7 @@ class Pipeline():
             except AttributeError:
                 # avoids one step overwriting the files of an previous
                 step.tmpdir = self.tmpdir/type(step).__name__
+                step.tmpdir.mkdir(exist_ok=True)
             self.steps.append(step)
 
     def run(self, modalities: Dict[str, Union[str, nib.Nifti1Image]],
