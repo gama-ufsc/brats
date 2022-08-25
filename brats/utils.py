@@ -19,8 +19,16 @@ from scipy.ndimage.morphology import distance_transform_edt as edt
 from skimage.segmentation import find_boundaries
 
 
-def get_orthoslicer(img, pos=(0, 0, 0), label=None, clipping=None):
+def get_orthoslicer(img, pos=(0, 0, 0), label=None, clipping=None, crop=(1.,1.,1.)):
     img_data = img.get_fdata()
+    # try:
+    #     img_target_shape = img_data.shape * np.array(crop)
+
+    #     offset = ((img_data.shape - img_target_shape) / 2).astype(int)
+
+    #     img_data = img_data[offset[0]:-offset[0],offset[1]:-offset[1],offset[2]:-offset[2]]
+    # except ValueError:
+    #     print(f'crop not possible with crop {crop} and img shape {img_data.shape}')
 
     if label is not None:
         img_data = (img_data >= label).astype(int)
@@ -107,12 +115,16 @@ def plot_img_overlay(image, overlay=None, overlay_label=None, alpha=0.25, ax=Non
 
     return update, ax
 
-def show_mri(image, overlay=None, overlay_label=None, pos=(-120, 120, 75),
-             plot_bounding_box=False, clipping=None, alpha=0.25):
+def show_mri(image, overlay=None, overlay_label=None, pos=None,
+             plot_bounding_box=False, contour=False, clipping=None, alpha=0.25,
+             return_fig=False):
     ol_colors = [(1, 0, 0, c) for c in np.linspace(0, 1, 100)]
     ol_cmap = mcolors.LinearSegmentedColormap.from_list('ol_cmap', ol_colors, N=2)
 
     image_ = _load_image_if_path(image)
+
+    if pos is None:
+        pos = tuple(image_.affine[:-1,-1])
 
     ortho_image = get_orthoslicer(image_, pos, clipping=clipping)
 
@@ -142,6 +154,11 @@ def show_mri(image, overlay=None, overlay_label=None, pos=(-120, 120, 75),
 
                 # plot bounding box on top of image
                 image_fig.axes[i].imshow(bb, cmap=ol_cmap, aspect=aspect[i])
+            elif contour:
+                # plot contour of the overlay
+                image_fig.axes[i].contour(overlay_data > 0, cmap=ol_cmap,
+                                          alpha=alpha, aspect=aspect[i],
+                                          antialiased=False, linewidths=0.01)
             else:
                 # plot overlay data plotted on top of image
                 image_fig.axes[i].imshow(overlay_data > 0, cmap=ol_cmap,
@@ -149,7 +166,10 @@ def show_mri(image, overlay=None, overlay_label=None, pos=(-120, 120, 75),
 
         ortho_overlay.close()
 
-    ortho_image.show()
+    if return_fig:
+        return image_fig
+    else:
+        ortho_image.show()
 
 
 def _hd_distance(p: np.ndarray, l: np.ndarray, c: float = None,
