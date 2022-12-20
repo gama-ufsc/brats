@@ -250,8 +250,9 @@ class Preprocessor(ABC):
         else:
             raise NotImplementedError('only Linear and NearestNeighbor supported')
 
-        return greedy_apply_transforms(input_image_fpath, output_image_fpath,
-                                       transforms_fpaths, _interpolation)
+        return greedy_apply_transforms(input_image_fpath, str(ref_image_fpath),
+                                       output_image_fpath, transforms_fpaths,
+                                       _interpolation)
     
     def transform_with_ants(self, input_image_fpath, ref_image_fpath,
                             transforms_fpaths, output_prefix: str,

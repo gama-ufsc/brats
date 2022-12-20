@@ -68,13 +68,13 @@ def captk_brats_pipeline(t1ce_fpath: str, t1_fpath: str, t2_fpath: str,
 
         return out
 
-def greedy_apply_transforms(moving_fpath: str, output_fpath: str, transforms_fpaths: List[str], interpolation='LINEAR'):
-    atlas_fpath = Path(os.environ['GREEDY_PATH'])/'../data/sri24/atlastImage.nii.gz'
-
+def greedy_apply_transforms(moving_fpath: str, ref_image_fpath: str,
+                            output_fpath: str, transforms_fpaths: List[str],
+                            interpolation='LINEAR'):
     transforms = [str(f) for f in transforms_fpaths]
 
     cmd = 'greedy'
-    cmd += f" -d 3 -rf {str(atlas_fpath)} -ri LINEAR"
+    cmd += f" -d 3 -rf {ref_image_fpath} -ri LINEAR"
     cmd += f" -ri {interpolation} -rm {moving_fpath} {output_fpath}"
     cmd += f" -r {' '.join(transforms)}"
 
