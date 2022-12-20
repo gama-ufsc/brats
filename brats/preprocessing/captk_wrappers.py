@@ -10,9 +10,6 @@ from dotenv import find_dotenv, load_dotenv
 # load up the .env entries as environment variables
 load_dotenv(find_dotenv())
 
-_captk_cmd = str(Path(os.environ['CAPTK_PATH'])/'captk')
-_greedy_cmd = str(Path(os.environ['GREEDY_PATH'])/'greedy')
-
 
 def captk_brats_pipeline(t1ce_fpath: str, t1_fpath: str, t2_fpath: str,
                          flair_fpath: str, tmpdir: str, subject_id: str = None,
@@ -23,7 +20,7 @@ def captk_brats_pipeline(t1ce_fpath: str, t1_fpath: str, t2_fpath: str,
     out_dir = Path(tmpdir)/subject_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = _captk_cmd + ' BraTSPipeline.cwl'
+    cmd = 'BraTSPipeline'
 
     cmd += f" -t1c {t1ce_fpath} -t1 {t1_fpath} -t2 {t2_fpath} -fl {flair_fpath}"
     cmd += f" -o {str(out_dir)}"
@@ -76,7 +73,7 @@ def greedy_apply_transforms(moving_fpath: str, output_fpath: str, transforms_fpa
 
     transforms = [str(f) for f in transforms_fpaths]
 
-    cmd = _greedy_cmd
+    cmd = 'greedy'
     cmd += f" -d 3 -rf {str(atlas_fpath)} -ri LINEAR"
     cmd += f" -ri {interpolation} -rm {moving_fpath} {output_fpath}"
     cmd += f" -r {' '.join(transforms)}"
@@ -90,7 +87,7 @@ def greedy_apply_transforms(moving_fpath: str, output_fpath: str, transforms_fpa
 
 def greedy_registration(fixed_image_fpath: str, moving_image_fpath: str,
                         out_mat_fpath: str):
-    cmd = _greedy_cmd
+    cmd = 'greedy'
     cmd += f" -d 3 -a -m NMI"
     cmd += f" -i {fixed_image_fpath} {moving_image_fpath}"
     cmd += f" -o {out_mat_fpath}"
@@ -106,7 +103,7 @@ def greedy_registration(fixed_image_fpath: str, moving_image_fpath: str,
 def captk_deepmedic(in_fpaths: List[str], out_dir: str,
                     deepmedic_model='skullStripping_modalityAgnostic'):
     model_fpath = Path(os.environ['DEEPMEDIC_PATH'])/'saved_models'/deepmedic_model
-    cmd = _captk_cmd + ' DeepMedic'
+    cmd = 'DeepMedic'
 
     cmd += f" -i {','.join([str(f) for f in in_fpaths])}"
     cmd += f" -o {out_dir}"
